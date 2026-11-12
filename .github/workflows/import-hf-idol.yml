@@ -1,0 +1,79 @@
+name: Import Hugging Face IDOL repository
+
+on:
+  workflow_dispatch:
+    inputs:
+      revision:
+        description: Hugging Face revision (branch, tag, or commit)
+        required: true
+        default: main
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: hf-idol-import-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  import-and-verify:
+    name: Transfer and verify source snapshot
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - name: Check out destination branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
+          fetch-depth: 0
+          lfs: false
+          persist-credentials: true
+
+      - name: Install Git LFS
+        run: |
+          if ! git lfs version >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install --yes git-lfs
+          fi
+          git lfs version
+          git lfs install
+
+      - name: Configure commit identity
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Enumerate source, preflight, download, and verify source hashes
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HF_REVISION: ${{ inputs.revision }}
+        run: |
+          python3 scripts/import_hf_repo.py import \
+            --revision "$HF_REVISION" \
+            --target-dir "huggingface/speridlabs-idol" \
+            --manifest "$RUNNER_TEMP/hf-idol-manifest.json"
+
+      - name: Commit snapshot, upload LFS objects, and push branch
+        env:
+          PUSH_BRANCH: ${{ github.ref_name }}
+        run: |
+          git add -- .gitattributes huggingface/speridlabs-idol
+          if git diff --cached --quiet; then
+            echo "No changes to commit; the snapshot is already present."
+          else
+            git commit -m "Import speridlabs/idol Hugging Face snapshot"
+            # Upload large content-addressed objects before publishing the refs.
+            # If GitHub LFS quota/permissions reject an upload, this step fails and
+            # the Git branch ref is not advanced with incomplete pointers.
+            git lfs push origin HEAD
+          fi
+          git push origin "HEAD:refs/heads/${PUSH_BRANCH}"
+
+      - name: Verify GitHub branch paths, sizes, hashes, and LFS pointers
+        env:
+          PUSH_BRANCH: ${{ github.ref_name }}
+        run: |
+          python3 scripts/import_hf_repo.py verify \
+            --manifest "$RUNNER_TEMP/hf-idol-manifest.json" \
+            --branch "$PUSH_BRANCH"
