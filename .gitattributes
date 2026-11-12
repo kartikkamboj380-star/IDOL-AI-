@@ -1,0 +1,4 @@
+huggingface/speridlabs-idol/birefnet.safetensors filter=lfs diff=lfs merge=lfs -text
+huggingface/speridlabs-idol/decoder.safetensors filter=lfs diff=lfs merge=lfs -text
+huggingface/speridlabs-idol/decoder_gs.safetensors filter=lfs diff=lfs merge=lfs -text
+huggingface/speridlabs-idol/denoiser.safetensors filter=lfs diff=lfs merge=lfs -text
