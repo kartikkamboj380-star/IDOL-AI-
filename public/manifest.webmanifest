@@ -1,0 +1,12 @@
+{
+  "name": "KAVRON AI Workspace",
+  "short_name": "KAVRON",
+  "description": "Intelligence. Tools. Agents.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#111411",
+  "theme_color": "#111411",
+  "icons": [
+    { "src": "/kavron-icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

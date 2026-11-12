@@ -1,0 +1,19 @@
+.git
+.github
+.venv
+venv
+node_modules
+dist
+build
+coverage
+__pycache__
+.pytest_cache
+.mypy_cache
+.ruff_cache
+.env
+.env.*
+!.env.example
+data
+*.pyc
+*.sqlite3
+Unselected files
