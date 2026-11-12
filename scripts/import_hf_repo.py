@@ -30,7 +30,7 @@ MODEL_ID = "speridlabs/idol"
 GITHUB_API = "https://api.github.com"
 GITHUB_OWNER = "kartikkamboj380-star"
 GITHUB_FREE_LFS_MAX_FILE_BYTES = 2 * 1024**3
-GIT_LFS_POINTER_VERSION = "https://git-lfs.github.com/spec/v1"
+GIT_LFS_POINTER_VERSION = "version https://git-lfs.github.com/spec/v1"
 LFS_TRACK_LIMIT_BYTES = 100 * 1024**2
 WEIGHT_EXTENSIONS = {
     ".safetensors", ".bin", ".pt", ".pth", ".ckpt", ".onnx", ".gguf",
