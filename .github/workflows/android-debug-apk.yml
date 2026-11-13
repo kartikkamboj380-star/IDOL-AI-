@@ -1,6 +1,9 @@
 name: Android debug APK
 
 on:
+  push:
+    branches:
+      - arena/551a9b13-idol-ai
   workflow_dispatch:
     inputs:
       server_url:
