@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -37,6 +38,9 @@ class Settings:
     github_client_secret: str = os.getenv("GITHUB_CLIENT_SECRET", "")
     github_private_key: str = os.getenv("GITHUB_PRIVATE_KEY", "").replace("\\n", "\n")
     github_webhook_secret: str = os.getenv("GITHUB_WEBHOOK_SECRET", "")
+    github_worker_url: str = os.getenv("KAVRON_GITHUB_WORKER_URL", "https://bold-silence-a166.kartikkambojo800.workers.dev").strip().rstrip("/")
+    github_knowledge_repo: str = os.getenv("KAVRON_GITHUB_KNOWLEDGE_REPO", "kartikkamboj380-star/IDOL-AI-").strip()
+    github_knowledge_ref: str = os.getenv("KAVRON_GITHUB_KNOWLEDGE_REF", "main").strip()
     google_client_id: str = os.getenv("GOOGLE_CLIENT_ID", "")
     google_client_secret: str = os.getenv("GOOGLE_CLIENT_SECRET", "")
     smtp_host: str = os.getenv("SMTP_HOST", "")
@@ -68,6 +72,7 @@ class Settings:
     tavily_api_key: str = os.getenv("TAVILY_API_KEY", "")
     upload_limit_bytes: int = int(os.getenv("KAVRON_UPLOAD_LIMIT_MB", "12")) * 1024 * 1024
     max_chat_history: int = int(os.getenv("KAVRON_MAX_CHAT_HISTORY", "24"))
+    provider_timeout_seconds: int = int(os.getenv("KAVRON_PROVIDER_TIMEOUT_SECONDS", "180"))
     max_agent_steps: int = int(os.getenv("KAVRON_MAX_AGENT_STEPS", "5"))
     max_active_jobs_per_user: int = int(os.getenv("KAVRON_MAX_ACTIVE_JOBS_PER_USER", "5"))
 
@@ -88,6 +93,13 @@ def validate_runtime_settings(config: Settings = settings) -> None:
         raise RuntimeError("Database pool bounds must satisfy 1 <= KAVRON_DB_POOL_MIN_SIZE <= KAVRON_DB_POOL_MAX_SIZE <= 256.")
     if config.max_active_jobs_per_user < 1 or config.max_active_jobs_per_user > 100:
         raise RuntimeError("KAVRON_MAX_ACTIVE_JOBS_PER_USER must be between 1 and 100.")
+    if config.provider_timeout_seconds < 5 or config.provider_timeout_seconds > 600:
+        raise RuntimeError("KAVRON_PROVIDER_TIMEOUT_SECONDS must be between 5 and 600.")
+    worker = urlsplit(config.github_worker_url)
+    if worker.scheme != "https" or not worker.hostname or worker.username or worker.password or worker.query or worker.fragment:
+        raise RuntimeError("KAVRON_GITHUB_WORKER_URL must be an HTTPS base URL without credentials, query, or fragment.")
+    if not re.fullmatch(r"[A-Za-z0-9_.-]{1,100}/[A-Za-z0-9_.-]{1,100}", config.github_knowledge_repo) or ".." in config.github_knowledge_repo:
+        raise RuntimeError("KAVRON_GITHUB_KNOWLEDGE_REPO must be a safe owner/repository name.")
     if config.require_email_verification and not (config.smtp_host and config.smtp_from):
         raise RuntimeError("Email verification requires SMTP_HOST and SMTP_FROM configuration.")
     if config.environment != "production":

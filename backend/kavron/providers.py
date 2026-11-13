@@ -58,7 +58,8 @@ class OllamaProvider(ChatProvider):
     async def stream_chat(self, messages: list[dict[str, str]], model: str, temperature: float = 0.7) -> AsyncIterator[str]:
         payload = {"model": model, "messages": messages, "stream": True, "options": {"temperature": temperature}}
         try:
-            async with httpx.AsyncClient(timeout=None) as client:
+            timeout = httpx.Timeout(read=settings.provider_timeout_seconds, connect=10, write=30, pool=10)
+            async with httpx.AsyncClient(timeout=timeout) as client:
                 async with client.stream("POST", f"{self.base_url}/api/chat", json=payload) as response:
                     response.raise_for_status()
                     async for line in response.aiter_lines():
@@ -106,7 +107,8 @@ class OpenAICompatibleProvider(ChatProvider):
     async def stream_chat(self, messages: list[dict[str, str]], model: str, temperature: float = 0.7) -> AsyncIterator[str]:
         payload = {"model": model, "messages": messages, "temperature": temperature, "stream": True}
         try:
-            async with httpx.AsyncClient(timeout=None) as client:
+            timeout = httpx.Timeout(read=settings.provider_timeout_seconds, connect=10, write=30, pool=10)
+            async with httpx.AsyncClient(timeout=timeout) as client:
                 async with client.stream("POST", f"{self.base_url}/chat/completions", headers=self._headers(), json=payload) as response:
                     response.raise_for_status()
                     async for line in response.aiter_lines():

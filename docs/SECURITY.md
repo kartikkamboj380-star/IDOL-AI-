@@ -12,6 +12,7 @@ This document records controls and gaps visible in the repository. It is not a p
 - Provider endpoints reject embedded credentials, non-HTTPS network targets, private IP ranges and non-loopback HTTP; loopback HTTP is allowed only for Ollama. DNS rebinding/egress filtering and pinned connection IPs are not implemented; deploy network egress controls and only configure trusted providers.
 - Uploads have a size/extension allowlist, generated storage names and user-scoped paths. Optional S3 object keys include the user ID and account/file deletion includes stored-object cleanup.
 - Retrieved documents, project memory, repository source, images and web search results are untrusted reference data, not system instructions. Repository agents analyze only; mutations require separate explicit approval. No arbitrary code execution endpoint exists.
+- The Worker connector uses only a server-configured HTTPS base URL and fixed repository; browser requests cannot select a hostname or repository. File paths are validated against a fetched tree, Worker responses are size-limited, authenticated routes are rate-limited, and LFS/binary content is excluded from indexing. The live Worker contract and its network behavior are not verified here.
 - GitHub App installation tokens are generated for authorized repositories and not persisted; approval-gated repository writes use write permissions only at execution. Remote revocation and permissions require live verification.
 
 ## Production requirements and known gaps

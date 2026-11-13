@@ -31,7 +31,7 @@ def client():
     with TestClient(app) as test_client:
         test_client.headers.update({"Origin": "http://localhost:5173", "Sec-Fetch-Site": "same-origin"})
         with connection() as db:
-            for table in ("agent_runs", "agents", "messages", "project_memory", "project_agents", "activity_log", "job_reservations", "rate_limits", "github_actions", "github_jobs", "github_index_files", "github_repositories", "github_connections", "oauth_states", "provider_configs", "user_preferences", "password_reset_tokens", "email_verification_tokens", "google_identities", "conversations", "projects", "files", "generated_images", "sessions", "users"):
+            for table in ("agent_runs", "agents", "messages", "project_memory", "project_agents", "activity_log", "job_reservations", "rate_limits", "github_worker_files", "github_worker_trees", "github_actions", "github_jobs", "github_index_files", "github_repositories", "github_connections", "oauth_states", "provider_configs", "user_preferences", "password_reset_tokens", "email_verification_tokens", "google_identities", "conversations", "projects", "files", "generated_images", "sessions", "users"):
                 db.execute(f"DELETE FROM {table}")
         yield test_client
 

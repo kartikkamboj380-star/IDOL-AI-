@@ -33,13 +33,14 @@ export async function api<T>(path: string, options: RequestInit = {}): Promise<T
 }
 
 export type ChatEvent =
-  | { type: 'meta'; conversation_id: string; model: string; provider: string }
+  | { type: 'meta'; conversation_id: string; user_message_id?: string; model: string; provider: string; repository_knowledge?: 'disabled' | 'available' | 'no_matches' | 'unavailable'; repository_coverage?: Record<string, unknown> | null }
+  | { type: 'sources'; items: { path: string; url: string; score: number }[] }
   | { type: 'delta'; content: string }
   | { type: 'done'; message_id: string }
   | { type: 'error'; message: string };
 
 export async function streamChat(
-  payload: { message: string; conversation_id?: string; project_id?: string; provider?: string; model?: string; file_ids?: string[] },
+  payload: { message: string; conversation_id?: string; project_id?: string; provider?: string; model?: string; file_ids?: string[]; use_repository_knowledge?: boolean; repository_ref?: string; edit_message_id?: string; image_context?: string },
   signal: AbortSignal,
   onEvent: (event: ChatEvent) => void,
 ): Promise<void> {
@@ -96,6 +97,7 @@ export interface ChatMessage {
   status?: string;
   model?: string | null;
   created_at?: string;
+  sources?: { path: string; url: string; score: number }[];
 }
 export interface Conversation {
   id: string;

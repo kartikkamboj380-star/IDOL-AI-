@@ -1,0 +1,1 @@
+ALTER TABLE github_worker_files ADD COLUMN truncated INTEGER NOT NULL DEFAULT 0;

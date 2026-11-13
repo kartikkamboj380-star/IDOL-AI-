@@ -1,19 +1,24 @@
-import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
+import { memo, useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import {
-  Activity, ArrowDown, ArrowRight, ArrowUp, Bot, Check, ChevronDown, CircleHelp, Code2,
-  Command, Copy, Download, FileCode2, FilePlus2, Files, FolderKanban, Github, ImagePlus, LockKeyhole,
-  LogOut, Menu, MessageCircle, MessagesSquare, Moon, MoreHorizontal, PanelLeftClose,
-  PanelLeftOpen, Plus, Search, Settings2, Shield, Sparkles, Sun, Trash2, WandSparkles, WifiOff, X,
+  Activity, ArrowDown, ArrowRight, ArrowUp, BookOpen, Bot, Check, ChevronDown, CircleHelp, Code2,
+  Command, Copy, Download, FileCode2, FilePlus2, Files, FolderKanban, Github, ImagePlus, Info, LockKeyhole,
+  LogOut, Menu, MessageCircle, MessagesSquare, Mic, Moon, MoreHorizontal, PanelLeftClose,
+  PanelLeftOpen, Pencil, Plus, Search, Settings2, Shield, Sparkles, Sun, Trash2, Volume2, WandSparkles, WifiOff, X,
 } from 'lucide-react';
 import {
   api, streamChat, ApiError, type Agent, type ChatMessage, type Conversation,
   type EngineInfo, type ModelInfo, type Project, type ProviderInfo, type User,
 } from './api';
 
-type ViewId = 'chat' | 'projects' | 'agents' | 'engines' | 'models' | 'images' | 'files' | 'github' | 'services' | 'settings' | 'admin';
-type Theme = 'dark' | 'light';
+type ViewId = 'chat' | 'projects' | 'agents' | 'engines' | 'models' | 'images' | 'files' | 'knowledge' | 'github' | 'services' | 'about' | 'settings' | 'admin';
+type Theme = 'dark' | 'light' | 'system';
+type SpeechAlternative = { transcript: string };
+type SpeechResult = ArrayLike<SpeechAlternative> & { isFinal: boolean };
+type SpeechResultEvent = { results: ArrayLike<SpeechResult> };
+type SpeechRecognizer = { lang: string; interimResults: boolean; continuous: boolean; onresult: ((event: SpeechResultEvent) => void) | null; onerror: ((event: { error: string }) => void) | null; onend: (() => void) | null; start: () => void; stop: () => void };
+type SpeechWindow = Window & { SpeechRecognition?: new () => SpeechRecognizer; webkitSpeechRecognition?: new () => SpeechRecognizer };
 interface BeforeInstallPromptEvent extends Event { prompt: () => Promise<void>; userChoice: Promise<{ outcome: 'accepted' | 'dismissed'; platform: string }>; }
 
 const primaryNav: { id: ViewId; label: string; icon: typeof MessageCircle }[] = [
@@ -24,6 +29,7 @@ const primaryNav: { id: ViewId; label: string; icon: typeof MessageCircle }[] = 
   { id: 'models', label: 'Model library', icon: Sparkles },
 ];
 const workspaceNav: { id: ViewId; label: string; icon: typeof MessageCircle }[] = [
+  { id: 'knowledge', label: 'Knowledge Base', icon: BookOpen },
   { id: 'images', label: 'Image studio', icon: ImagePlus },
   { id: 'files', label: 'File workspace', icon: Files },
   { id: 'github', label: 'GitHub connect', icon: Github },
@@ -33,6 +39,22 @@ const workspaceNav: { id: ViewId; label: string; icon: typeof MessageCircle }[] 
 function BrandMark({ small = false }: { small?: boolean }) {
   return <span className={`brand-mark ${small ? 'brand-mark-small' : ''}`} aria-hidden="true"><svg viewBox="0 0 40 40" fill="none"><path d="M8 8h24L17 20l15 12H8V8Z" stroke="currentColor" strokeWidth="2.3" strokeLinejoin="round"/><path d="M8 20h11" stroke="currentColor" strokeWidth="2.3" strokeLinecap="round"/><circle cx="31" cy="8" r="2" fill="currentColor"/></svg></span>;
 }
+
+const CodeHighlight = memo(function CodeHighlight({ code, language }: { code: string; language: string }) {
+  const [copied, setCopied] = useState(false);
+  const keywords = /^(?:as|async|await|break|case|catch|class|const|continue|def|del|elif|else|export|extends|false|finally|for|from|function|if|import|in|interface|let|new|null|of|pass|return|self|static|switch|this|throw|true|try|type|var|while|yield)$/;
+  const pattern = /(\/\*[\s\S]*?\*\/|\/\/[^\n]*|#[^\n]*|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`|\b\d+(?:\.\d+)?\b|\b(?:as|async|await|break|case|catch|class|const|continue|def|del|elif|else|export|extends|false|finally|for|from|function|if|import|in|interface|let|new|null|of|pass|return|self|static|switch|this|throw|true|try|type|var|while|yield)\b)/g;
+  const parts = code.split(pattern);
+  async function copy() { try { await navigator.clipboard.writeText(code); setCopied(true); window.setTimeout(() => setCopied(false), 1400); } catch { setCopied(false); } }
+  return <div className="code-block"><div className="code-block-toolbar"><span>{language || 'code'}</span><button onClick={() => void copy()}><Copy size={12}/>{copied ? 'Copied' : 'Copy code'}</button></div><pre><code>{parts.map((token, index) => {
+    let kind = '';
+    if (/^(\/\/|\/\*|#)/.test(token)) kind = 'comment';
+    else if (/^("|'|`)/.test(token)) kind = 'string';
+    else if (/^\d/.test(token)) kind = 'number';
+    else if (keywords.test(token)) kind = 'keyword';
+    return kind ? <span className={`syntax-${kind}`} key={index}>{token}</span> : token;
+  })}</code></pre></div>;
+});
 
 function AuthScreen({ onSignedIn }: { onSignedIn: (user: User) => void }) {
   const [mode, setMode] = useState<'login' | 'register'>('register');
@@ -86,7 +108,7 @@ function AuthScreen({ onSignedIn }: { onSignedIn: (user: User) => void }) {
     <div className="auth-art" aria-hidden="true"><div className="orbit orbit-one"/><div className="orbit orbit-two"/><div className="art-core"><BrandMark/><span>INTELLIGENCE<br/>IN MOTION</span></div><div className="art-note note-a">Context aware</div><div className="art-note note-b">Built for focus</div></div>
     <section className="auth-panel">
       <div className="auth-brand"><BrandMark/><span>KAVRON<span className="brand-ai"> AI</span></span></div>
-      <div className="auth-copy"><p className="eyebrow">INTELLIGENCE. TOOLS. AGENTS.</p><h1>Your workspace<br/>for what’s next.</h1><p className="muted">A calm, configurable home for your ideas, projects, and AI tools.</p></div>
+      <div className="auth-copy"><p className="eyebrow">YOUR INTELLIGENCE. YOUR KNOWLEDGE. YOUR AI.</p><h1>Your workspace<br/>for what’s next.</h1><p className="muted">A calm, configurable home for your ideas, projects, and AI tools.</p></div>
       {recovering ? <form className="auth-form" onSubmit={recover}><h2>{resetToken ? 'Choose a new password' : 'Reset your password'}</h2>{!resetToken && <label>Email address<input type="email" autoComplete="email" required value={email} onChange={e => setEmail(e.target.value)} placeholder="you@example.com"/></label>}{resetToken && <label>New password<input type="password" minLength={10} required value={recoveryPassword} onChange={e => setRecoveryPassword(e.target.value)} placeholder="At least 10 characters"/></label>}{error && <div className="inline-error" role="alert">{error}</div>}{message && <p role="status">{message}</p>}<button className="button button-primary auth-submit" disabled={busy}>{busy ? 'Please wait…' : resetToken ? 'Update password' : 'Send reset instructions'}<ArrowRight size={16}/></button><button type="button" className="text-link" onClick={() => { setRecovering(false); setError(''); }}>Back to sign in</button></form> : <form className="auth-form" onSubmit={submit}>
         <div className="auth-tabs"><button type="button" className={mode === 'register' ? 'selected' : ''} onClick={() => { setMode('register'); setError(''); setMessage(''); }}>Create account</button><button type="button" className={mode === 'login' ? 'selected' : ''} onClick={() => { setMode('login'); setError(''); setMessage(''); }}>Sign in</button></div>
         {mode === 'register' && <label>Your name<input autoComplete="name" required minLength={1} maxLength={80} value={name} onChange={e => setName(e.target.value)} placeholder="Kartik Kamboj"/></label>}
@@ -111,7 +133,7 @@ function App() {
   const [user, setUser] = useState<User | null>(null);
   const [authChecked, setAuthChecked] = useState(false);
   const [view, setView] = useState<ViewId>('chat');
-  const [theme, setTheme] = useState<Theme>(() => (localStorage.getItem('kavron-theme') as Theme) || 'dark');
+  const [theme, setTheme] = useState<Theme>(() => { const saved = localStorage.getItem('kavron-theme'); return saved === 'light' || saved === 'dark' || saved === 'system' ? saved : 'system'; });
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [mobileMenu, setMobileMenu] = useState(false);
   const [models, setModels] = useState<ModelInfo[]>([]);
@@ -148,13 +170,20 @@ function App() {
     finally { if (append) setConversationLoadingMore(false); }
   }, []);
 
-  useEffect(() => { document.documentElement.dataset.theme = theme; localStorage.setItem('kavron-theme', theme); }, [theme]);
+  useEffect(() => {
+    const media = window.matchMedia('(prefers-color-scheme: dark)');
+    const apply = () => { document.documentElement.dataset.theme = theme === 'system' ? (media.matches ? 'dark' : 'light') : theme; };
+    apply();
+    media.addEventListener?.('change', apply);
+    localStorage.setItem('kavron-theme', theme);
+    return () => media.removeEventListener?.('change', apply);
+  }, [theme]);
   useEffect(() => {
     api<{ user: User }>('/auth/me').then(result => setUser(result.user)).catch(() => setUser(null)).finally(() => setAuthChecked(true));
   }, []);
   useEffect(() => {
     if (!user) return;
-    api<{ theme?: string }>('/auth/preferences').then(result => { if (result.theme === 'dark' || result.theme === 'light') setTheme(result.theme); }).catch(() => undefined);
+    api<{ theme?: string }>('/auth/preferences').then(result => { if (result.theme === 'dark' || result.theme === 'light' || result.theme === 'system') setTheme(result.theme); }).catch(() => undefined);
   }, [user?.id]);
   useEffect(() => { if (user) { void refreshInventory(); void refreshConversations(); } }, [user, refreshInventory, refreshConversations]);
   useEffect(() => {
@@ -191,7 +220,7 @@ function App() {
   if (!authChecked) return <div className="boot-screen"><BrandMark/><span>KAVRON</span><div className="spinner"/></div>;
   if (!user) return <AuthScreen onSignedIn={handleSignedIn}/>;
 
-  const titleMap: Record<ViewId, string> = { chat: 'Workspace', projects: 'Projects', agents: 'Agent studio', engines: 'Engine center', models: 'Model library', images: 'Image studio', files: 'File workspace', github: 'GitHub connect', services: 'Connected services', settings: 'Settings', admin: 'Admin console' };
+  const titleMap: Record<ViewId, string> = { chat: 'Workspace', projects: 'Projects', agents: 'Agent studio', engines: 'Engine center', models: 'Model library', images: 'Image studio', files: 'File workspace', knowledge: 'Knowledge Base', github: 'GitHub connect', services: 'Connected services', about: 'About KAVRON', settings: 'Settings', admin: 'Admin console' };
   const mainContent = () => {
     switch (view) {
       case 'chat': return <ChatView user={user} models={models} conversations={conversations} conversationId={conversationId} projectId={projectId} setConversationId={setConversationId} onConversationUpdate={() => void refreshConversations(conversationSearch)} onNotice={setNotice}/>;
@@ -201,8 +230,10 @@ function App() {
       case 'models': return <ModelsView models={models} providers={providers} onRefresh={refreshInventory}/>;
       case 'images': return <ImageStudioView engines={engines} onNotice={setNotice}/>;
       case 'files': return <FilesView onNotice={setNotice}/>;
+      case 'knowledge': return <KnowledgeBaseView onNotice={setNotice}/>;
       case 'github': return <GitHubView onNotice={setNotice}/>;
       case 'services': return <ServicesView providers={providers} onRefresh={refreshInventory} onNotice={setNotice}/>;
+      case 'about': return <AboutView/>;
       case 'settings': return <SettingsView user={user} theme={theme} onTheme={saveTheme} onLogout={logout} onNotice={setNotice} onProfileUpdate={setUser}/>;
       case 'admin': return <AdminView user={user}/>;
       default: return null;
@@ -223,6 +254,7 @@ function App() {
         <div className="history-list">{conversations.map(conversation => <button key={conversation.id} className={`history-item ${conversationId === conversation.id ? 'active' : ''}`} onClick={() => openConversation(conversation.id, conversation.project_id)} title={conversation.title}><MessagesSquare size={14}/><span>{conversation.title}</span></button>)}{conversations.length === 0 && <p className="sidebar-empty">Your conversations will appear here.</p>}{conversationHasMore && <button className="history-load-more" disabled={conversationLoadingMore} onClick={() => void refreshConversations(conversationSearch, conversationPage + 1, true)}>{conversationLoadingMore ? 'Loading…' : 'Load more conversations'}</button>}</div>
       </nav>
       <div className="sidebar-bottom">
+        <NavButton item={{ id: 'about', label: 'About KAVRON', icon: Info }} active={view === 'about'} onClick={() => { setView('about'); setMobileMenu(false); }}/>
         <NavButton item={{ id: 'settings', label: 'Settings', icon: Settings2 }} active={view === 'settings'} onClick={() => { setView('settings'); setMobileMenu(false); }}/>
         {user.role === 'admin' && <NavButton item={{ id: 'admin', label: 'Admin console', icon: Shield }} active={view === 'admin'} onClick={() => { setView('admin'); setMobileMenu(false); }}/>}
         <button className="account-button" onClick={() => setView('settings')}><span className="avatar">{user.name.slice(0, 1).toUpperCase()}</span><span className="account-name"><strong>{user.name}</strong><small>{user.role === 'admin' ? 'Administrator' : 'Personal workspace'}</small></span><ChevronDown size={15}/></button>
@@ -235,7 +267,7 @@ function App() {
       <footer className="app-footer"><span><BrandMark small/>KAVRON AI</span><span>Built by Kartik Kamboj</span></footer>
     </main>
     {notice && <div className="toast" role="status"><CircleHelp size={16}/><span>{notice}</span><button aria-label="Dismiss notification" onClick={() => setNotice('')}><X size={15}/></button></div>}
-    <nav className="mobile-bottom-nav" aria-label="Quick navigation">{[primaryNav[0], primaryNav[1], primaryNav[2], workspaceNav[0]].map(item => <button key={item.id} className={view === item.id ? 'active' : ''} onClick={() => { setView(item.id); setMobileMenu(false); }}><item.icon size={19}/><span>{item.id === 'chat' ? 'Chat' : item.id === 'projects' ? 'Projects' : item.id === 'agents' ? 'Agents' : 'Images'}</span></button>)}</nav>
+    <nav className="mobile-bottom-nav" aria-label="Quick navigation">{[primaryNav[0], primaryNav[1], workspaceNav[0], primaryNav[2]].map(item => <button key={item.id} className={view === item.id ? 'active' : ''} onClick={() => { setView(item.id); setMobileMenu(false); }}><item.icon size={19}/><span>{item.id === 'chat' ? 'Chat' : item.id === 'projects' ? 'Projects' : item.id === 'knowledge' ? 'Knowledge' : 'Agents'}</span></button>)}</nav>
   </div>;
 }
 
@@ -259,7 +291,14 @@ function ChatView({ user, models, conversations, conversationId, projectId, setC
   const [selectedProvider, setSelectedProvider] = useState('');
   const [selectedProject, setSelectedProject] = useState(projectId ?? '');
   const [projects, setProjects] = useState<Project[]>([]);
-  const [attached, setAttached] = useState<{ id: string; name: string }[]>([]);
+  const [attached, setAttached] = useState<{ id: string; name: string; size_bytes?: number }[]>([]);
+  const [attachedImage, setAttachedImage] = useState<{ file: File; url: string } | null>(null);
+  const [uploadingName, setUploadingName] = useState('');
+  const [useRepositoryKnowledge, setUseRepositoryKnowledge] = useState(true);
+  const [repositoryKnowledgeStatus, setRepositoryKnowledgeStatus] = useState<'disabled' | 'available' | 'no_matches' | 'unavailable' | null>(null);
+  const [voicePreview, setVoicePreview] = useState('');
+  const [listening, setListening] = useState(false);
+  const recognitionRef = useRef<SpeechRecognizer | null>(null);
   const [sending, setSending] = useState(false);
   const [streamingId, setStreamingId] = useState<string | null>(null);
   const [error, setError] = useState('');
@@ -278,41 +317,91 @@ function ChatView({ user, models, conversations, conversationId, projectId, setC
     api<{ items: ChatMessage[] }>(`/conversations/${conversationId}/messages`).then(data => setMessages(data.items)).catch(err => setError(err.message));
   }, [conversationId]);
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' }); }, [messages, sending]);
+  useEffect(() => () => { recognitionRef.current?.stop(); window.speechSynthesis?.cancel(); }, []);
+  useEffect(() => { const url = attachedImage?.url; return () => { if (url) URL.revokeObjectURL(url); }; }, [attachedImage?.url]);
+
+  function startVoiceInput() {
+    const Speech = (window as SpeechWindow).SpeechRecognition ?? (window as SpeechWindow).webkitSpeechRecognition;
+    if (!Speech) { onNotice('Speech-to-text is not supported by this browser. You can still type your message.'); return; }
+    const recognition = new Speech(); recognition.lang = navigator.language || 'en'; recognition.interimResults = true; recognition.continuous = false;
+    recognition.onresult = event => {
+      let transcript = '';
+      for (let index = 0; index < event.results.length; index++) transcript += event.results[index][0]?.transcript ?? '';
+      setVoicePreview(transcript);
+      const final = Array.from(event.results).filter(result => result.isFinal).map(result => result[0]?.transcript ?? '').join(' ').trim();
+      if (final) setDraft(current => `${current.trim()}${current.trim() ? ' ' : ''}${final}`);
+    };
+    recognition.onerror = event => { setListening(false); if (event.error !== 'no-speech' && event.error !== 'aborted') onNotice('Voice input could not start. Check microphone permission or type instead.'); };
+    recognition.onend = () => setListening(false);
+    recognitionRef.current = recognition; setVoicePreview(''); setListening(true);
+    try { recognition.start(); } catch { setListening(false); onNotice('Voice input is already active or unavailable.'); }
+  }
+
+  function speakText(text: string) {
+    if (!('speechSynthesis' in window)) { onNotice('Text-to-speech is not supported by this browser.'); return; }
+    window.speechSynthesis.cancel(); const utterance = new SpeechSynthesisUtterance(text.slice(0, 12000)); utterance.lang = navigator.language || 'en'; window.speechSynthesis.speak(utterance);
+  }
 
   async function attachFile(file?: File) {
     if (!file) return;
-    const form = new FormData(); form.append('file', file);
+    if (file.type.startsWith('image/')) {
+      if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type) || file.size > 10 * 1024 * 1024) { onNotice('For vision, attach a PNG, JPEG, or WebP image up to 10 MiB.'); if (fileRef.current) fileRef.current.value = ''; return; }
+      setAttachedImage({ file, url: URL.createObjectURL(file) });
+      if (fileRef.current) fileRef.current.value = '';
+      return;
+    }
+    const form = new FormData(); form.append('file', file); setUploadingName(file.name);
     try {
-      const result = await api<{ id: string; name: string }>('/files', { method: 'POST', body: form });
-      setAttached(current => [...current, { id: result.id, name: result.name }]);
-      onNotice(`${result.name} is ready to use as conversation context.`);
+      const result = await api<{ id: string; name: string; size_bytes?: number }>('/files', { method: 'POST', body: form });
+      setAttached(current => [...current, { id: result.id, name: result.name, size_bytes: result.size_bytes }]);
+      onNotice(`${result.name} uploaded and extracted for this conversation.`);
     } catch (err) { onNotice(err instanceof Error ? err.message : 'Upload failed.'); }
-    if (fileRef.current) fileRef.current.value = '';
+    finally { setUploadingName(''); if (fileRef.current) fileRef.current.value = ''; }
   }
 
-  async function sendMessage(text = draft) {
+  async function sendMessage(text = draft, editTarget = editingId) {
     const content = text.trim();
     if (!content || sending) return;
-    if (!models.length) { setError('Connect Ollama or an OpenAI-compatible model in Engine Center before chatting.'); return; }
+    if (!models.length) { setError('Connect a real AI provider in Engine Center before chatting. GitHub knowledge is retrieval, not an AI model.'); return; }
     setDraft(''); setError(''); setSending(true);
-    const tempUser = `local-user-${Date.now()}`;
+    let imageContext = '';
+    if (attachedImage) {
+      try {
+        const form = new FormData(); form.append('file', attachedImage.file); form.append('prompt', content || 'Describe this image and summarize visible content.');
+        const vision = await api<{ analysis: string; model: string; provider: string }>('/vision/analyze', { method: 'POST', body: form });
+        imageContext = `[Image analyzed by configured ${vision.provider} vision model ${vision.model}]\n${vision.analysis}`;
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Image analysis failed.'); setSending(false); return;
+      }
+    }
+    const tempUser = editTarget || `local-user-${Date.now()}`;
     const tempAssistant = `local-assistant-${Date.now()}`;
-    setMessages(current => [...current, { id: tempUser, role: 'user', content, created_at: new Date().toISOString() }, { id: tempAssistant, role: 'assistant', content: '', status: 'streaming' }]);
+    setMessages(current => {
+      if (editTarget) {
+        const index = current.findIndex(message => message.id === editTarget);
+        if (index >= 0) return [...current.slice(0, index), { ...current[index], content, status: 'complete' }, { id: tempAssistant, role: 'assistant', content: '', status: 'streaming' }];
+      }
+      return [...current, { id: tempUser, role: 'user', content, created_at: new Date().toISOString() }, { id: tempAssistant, role: 'assistant', content: '', status: 'streaming' }];
+    });
     setStreamingId(tempAssistant);
     const controller = new AbortController(); abortRef.current = controller;
     try {
-      await streamChat({ message: content, conversation_id: conversationId ?? undefined, project_id: selectedProject || undefined, provider: selectedProvider || undefined, model: selectedModel || undefined, file_ids: attached.map(file => file.id) }, controller.signal, event => {
+      await streamChat({ message: content, conversation_id: conversationId ?? undefined, project_id: selectedProject || undefined, provider: selectedProvider || undefined, model: selectedModel || undefined, file_ids: attached.map(file => file.id), use_repository_knowledge: useRepositoryKnowledge, edit_message_id: editTarget || undefined, image_context: imageContext || undefined }, controller.signal, event => {
         if (event.type === 'meta') {
           if (!conversationId) setConversationId(event.conversation_id);
-          setSelectedModel(event.model); setSelectedProvider(event.provider);
+          if (event.user_message_id && !editTarget) setMessages(current => current.map(message => message.id === tempUser ? { ...message, id: event.user_message_id! } : message));
+          setSelectedModel(event.model); setSelectedProvider(event.provider); setRepositoryKnowledgeStatus(event.repository_knowledge ?? null);
+        } else if (event.type === 'sources') {
+          setMessages(current => current.map(message => message.id === tempAssistant ? { ...message, sources: event.items } : message));
         } else if (event.type === 'delta') {
           setMessages(current => current.map(message => message.id === tempAssistant ? { ...message, content: message.content + event.content } : message));
         } else if (event.type === 'error') {
           setMessages(current => current.flatMap(message => message.id !== tempAssistant ? [message] : message.content ? [{ ...message, status: 'error' }] : []));
-          setError(event.message);
+          setError(event.message); setEditingId('');
         } else if (event.type === 'done') {
           setMessages(current => current.map(message => message.id === tempAssistant ? { ...message, status: 'complete' } : message));
-          setAttached([]);
+          setAttached([]); setEditingId('');
+          setAttachedImage(null);
         }
       });
       onConversationUpdate();
@@ -332,12 +421,29 @@ function ChatView({ user, models, conversations, conversationId, projectId, setC
   function stop() { abortRef.current?.abort(); if (streamingId) setMessages(current => current.map(message => message.id === streamingId ? { ...message, status: 'stopped' } : message)); setSending(false); setStreamingId(null); }
   const currentConversation = conversations.find(item => item.id === conversationId);
   const selectedModelInfo = models.find(model => model.id === selectedModel);
+  async function renameConversation() {
+    if (!conversationId) return;
+    const title = window.prompt('Rename this conversation', currentConversation?.title ?? 'Conversation');
+    if (title === null || !title.trim()) return;
+    try { await api(`/conversations/${conversationId}`, { method: 'PATCH', body: JSON.stringify({ title: title.trim() }) }); onConversationUpdate(); }
+    catch (err) { onNotice(err instanceof Error ? err.message : 'Could not rename conversation.'); }
+  }
+  async function deleteConversation() {
+    if (!conversationId || !window.confirm('Delete this conversation and its messages? This cannot be undone.')) return;
+    try { await api(`/conversations/${conversationId}`, { method: 'DELETE' }); setMessages([]); setConversationId(null); onConversationUpdate(); onNotice('Conversation deleted.'); }
+    catch (err) { onNotice(err instanceof Error ? err.message : 'Could not delete conversation.'); }
+  }
+  function exportConversation() {
+    if (!conversationId) return;
+    const content = `# ${currentConversation?.title || 'KAVRON conversation'}\n\n` + messages.map(item => `## ${item.role === 'assistant' ? 'KAVRON AI' : 'You'}\n\n${item.content}${item.sources?.length ? `\n\nSources: ${item.sources.map(source => `[${source.path}](${source.url})`).join(', ')}` : ''}`).join('\n\n---\n\n');
+    const url = URL.createObjectURL(new Blob([content], { type: 'text/markdown;charset=utf-8' })); const anchor = document.createElement('a'); anchor.href = url; anchor.download = `${(currentConversation?.title || 'kavron-conversation').replace(/[^a-z0-9_-]+/gi, '-').slice(0, 80)}.md`; anchor.click(); window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
 
   return <div className={`chat-view ${messages.length ? 'has-messages' : ''}`}>
     {messages.length === 0 ? <div className="chat-welcome">
       <div className="welcome-mark"><BrandMark/></div>
       <p className="eyebrow">YOUR THINKING SPACE</p>
-      <h1>What are we<br/><span>working on?</span></h1>
+      <h1>What can I<br/><span>help you with?</span></h1>
       <p className="welcome-subtitle">Bring a question, a document, or a project. KAVRON will work with the tools you connect.</p>
       {!models.length && <div className="provider-warning"><div className="warning-icon"><Activity size={17}/></div><div><strong>No model provider connected</strong><p>Configure Ollama or an OpenAI-compatible endpoint to get real responses.</p></div><button onClick={() => window.dispatchEvent(new CustomEvent('kavron:navigate', { detail: 'engines' }))}>Set up <ArrowRight size={14}/></button></div>}
       <div className="suggestion-grid">{[
@@ -346,26 +452,31 @@ function ChatView({ user, models, conversations, conversationId, projectId, setC
         { icon: Files, title: 'Work with a document', text: 'Summarize or extract key details' },
       ].map((item, index) => <button key={item.title} className="suggestion-card" onClick={() => setDraft(['Help me understand the structure of this codebase.', 'Help me explore this idea and identify useful next steps.', 'Summarize the attached document and list its key points.'][index])}><item.icon size={16}/><strong>{item.title}</strong><span>{item.text}</span><ArrowRight className="suggestion-arrow" size={14}/></button>)}</div>
     </div> : <div className="message-list">
-      <div className="conversation-title-row"><span className="eyebrow">{currentConversation?.title || 'CONVERSATION'}</span><div className="context-pills">{selectedModelInfo && <span className="context-pill"><Sparkles size={12}/>{selectedModelInfo.id}</span>}{selectedProject && <span className="context-pill"><FolderKanban size={12}/>{projects.find(p => p.id === selectedProject)?.name || 'Project'}</span>}</div></div>
+      <div className="conversation-title-row"><div className="conversation-title-main"><span className="eyebrow">{currentConversation?.title || 'CONVERSATION'}</span><div className="context-pills">{selectedModelInfo && <span className="context-pill"><Sparkles size={12}/>{selectedModelInfo.id}</span>}{selectedProject && <span className="context-pill"><FolderKanban size={12}/>{projects.find(p => p.id === selectedProject)?.name || 'Project'}</span>}{repositoryKnowledgeStatus && <span className={`context-pill knowledge-state-${repositoryKnowledgeStatus}`}>{repositoryKnowledgeStatus === 'available' ? 'Repository sources attached' : repositoryKnowledgeStatus === 'unavailable' ? 'Repository connector unavailable' : repositoryKnowledgeStatus === 'disabled' ? 'Repository context off' : 'No matching repository files'}</span>}</div></div>{conversationId && <div className="conversation-header-actions"><IconButton label="Rename conversation" onClick={() => void renameConversation()}><Pencil size={14}/></IconButton><IconButton label="Export conversation as Markdown" onClick={exportConversation}><Download size={14}/></IconButton><IconButton label="Delete conversation" onClick={() => void deleteConversation()}><Trash2 size={14}/></IconButton></div>}</div>
       {messages.map(message => <article key={message.id} className={`message-row ${message.role}`}>
         <div className={`message-avatar ${message.role === 'assistant' ? 'assistant-avatar' : ''}`}>{message.role === 'assistant' ? <BrandMark small/> : user.name.slice(0, 1).toUpperCase()}</div>
         <div className="message-main"><div className="message-meta"><strong>{message.role === 'assistant' ? 'KAVRON' : 'You'}</strong>{message.model && message.role === 'assistant' && <span>{message.model}</span>}{message.status === 'streaming' && <span className="stream-indicator"><span/>Generating</span>}</div>
-          {message.role === 'assistant' && !message.content && message.status === 'streaming' ? <div className="typing-dots"><i/><i/><i/></div> : <div className="markdown-body"><ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown></div>}
-          <div className="message-actions">{message.role === 'assistant' && message.content && <button onClick={() => void copyMessage(message.id, message.content)}><Copy size={13}/>{copied === message.id ? 'Copied' : 'Copy'}</button>}{message.role === 'user' && <button onClick={() => reuseMessage(message)}><FileCode2 size={13}/>{editingId === message.id ? 'Editing' : 'Reuse'}</button>}{message.role === 'assistant' && message.status === 'complete' && <button onClick={() => { const previous = [...messages].reverse().find(item => item.role === 'user'); if (previous) void sendMessage(previous.content); }}><ArrowDown size={13}/>Regenerate</button>}</div>
+          {message.role === 'assistant' && !message.content && message.status === 'streaming' ? <div className="typing-dots"><i/><i/><i/></div> : <div className="markdown-body"><ReactMarkdown remarkPlugins={[remarkGfm]} components={{ pre: ({ children }) => <>{children}</>, code: ({ className, children }) => className ? <CodeHighlight code={String(children).replace(/\n$/, '')} language={className.replace('language-', '')}/> : <code>{children}</code> }}>{message.content}</ReactMarkdown></div>}
+          {message.role === 'assistant' && !!message.sources?.length && <div className="message-sources"><span>Sources</span>{message.sources.map(source => <a key={source.path} href={source.url} target="_blank" rel="noreferrer" title={`Open ${source.path} on GitHub`}><Code2 size={12}/>{source.path}</a>)}</div>}
+          <div className="message-actions">{message.role === 'assistant' && message.content && <button onClick={() => void copyMessage(message.id, message.content)}><Copy size={13}/>{copied === message.id ? 'Copied' : 'Copy'}</button>}{message.role === 'assistant' && message.content && <button onClick={() => speakText(message.content)}><Volume2 size={13}/>Read aloud</button>}{message.role === 'user' && !message.id.startsWith('local-user-') && <button onClick={() => reuseMessage(message)}><Pencil size={13}/>{editingId === message.id ? 'Editing' : 'Edit'}</button>}{message.role === 'assistant' && ['complete', 'error'].includes(message.status ?? '') && <button onClick={() => { const previous = [...messages].reverse().find(item => item.role === 'user'); if (previous) void sendMessage(previous.content, previous.id.startsWith('local-user-') ? '' : previous.id); }}><ArrowDown size={13}/>{message.status === 'error' ? 'Retry' : 'Regenerate'}</button>}</div>
         </div>
       </article>)}
       <div ref={bottomRef}/>
     </div>}
     {error && <div className="chat-error" role="alert"><CircleHelp size={17}/><span>{error}</span><button onClick={() => setError('')} aria-label="Dismiss error"><X size={15}/></button></div>}
     <div className="composer-wrap">
-      {attached.length > 0 && <div className="attachment-strip">{attached.map(file => <span className="attachment-chip" key={file.id}><Files size={13}/>{file.name}<button aria-label={`Remove ${file.name}`} onClick={() => setAttached(current => current.filter(item => item.id !== file.id))}><X size={12}/></button></span>)}</div>}
+      {editingId && <div className="editing-banner"><Pencil size={13}/><span>Editing this message; later turns will be removed when you send.</span><button onClick={() => { setEditingId(''); setDraft(''); }}>Cancel</button></div>}
+      {voicePreview && <div className="voice-preview"><Mic size={13}/><span>{voicePreview}</span><button onClick={() => setVoicePreview('')} aria-label="Clear voice preview"><X size={13}/></button></div>}
+      {attached.length > 0 && <div className="attachment-strip">{attached.map(file => <span className="attachment-chip" key={file.id}><Files size={13}/>{file.name}{file.size_bytes !== undefined && <small>{formatBytes(file.size_bytes)}</small>}<button aria-label={`Remove ${file.name}`} onClick={() => setAttached(current => current.filter(item => item.id !== file.id))}><X size={12}/></button></span>)}</div>}
+      {attachedImage && <div className="image-attachment-preview"><img src={attachedImage.url} alt="Selected image preview"/><div><strong>{attachedImage.file.name}</strong><small>{formatBytes(attachedImage.file.size)} · one-time vision context; the image itself is not stored in chat history</small></div><button aria-label="Remove image" onClick={() => setAttachedImage(null)}><X size={14}/></button></div>}
+      {uploadingName && <div className="upload-progress"><span>Uploading and extracting {uploadingName}…</span><progress/></div>}
       <div className="composer">
         <textarea className="composer-input" aria-label="Message KAVRON" placeholder={models.length ? 'Ask anything. Use # to add context.' : 'Connect a model provider to start a conversation…'} rows={1} value={draft} onChange={e => setDraft(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void sendMessage(); } }} onInput={e => { e.currentTarget.style.height = 'auto'; e.currentTarget.style.height = `${Math.min(e.currentTarget.scrollHeight, 180)}px`; }} />
-        <div className="composer-toolbar"><div className="composer-tools"><input ref={fileRef} type="file" className="visually-hidden" accept=".txt,.md,.markdown,.json,.csv,.py,.ts,.tsx,.js,.jsx,.html,.css,.yaml,.yml,.toml,.sql,.go,.rs,.java,.sh,.xml,.ini,.log,.pdf,.docx" onChange={e => void attachFile(e.target.files?.[0])}/><button className="tool-button" title="Attach a document" onClick={() => fileRef.current?.click()}><Plus size={16}/><span>Attach</span></button>{projects.length > 0 && <label className="select-wrap project-select"><FolderKanban size={13}/><select aria-label="Choose project" value={selectedProject} onChange={e => setSelectedProject(e.target.value)}><option value="">No project</option>{projects.map(project => <option key={project.id} value={project.id}>{project.name}</option>)}</select><ChevronDown size={12}/></label>}</div>
-          <div className="composer-right"><label className="model-select"><select aria-label="Select model" disabled={!models.length} value={selectedModel} onChange={e => { const model = models.find(item => item.id === e.target.value); setSelectedModel(e.target.value); if (model) setSelectedProvider(model.provider); }}><option value="">{models.length ? 'Select model' : 'No model'}</option>{models.map(model => <option key={`${model.provider}:${model.id}`} value={model.id}>{model.id}</option>)}</select><ChevronDown size={13}/></label>{sending ? <button className="send-button stop-button" aria-label="Stop generation" onClick={stop}><span className="stop-square"/></button> : <button className="send-button" aria-label="Send message" disabled={!draft.trim() || !models.length} onClick={() => void sendMessage()}><ArrowUp size={19}/></button>}</div>
+        <div className="composer-toolbar"><div className="composer-tools"><input ref={fileRef} type="file" className="visually-hidden" accept=".txt,.md,.markdown,.json,.csv,.py,.ts,.tsx,.js,.jsx,.html,.css,.yaml,.yml,.toml,.sql,.go,.rs,.java,.sh,.xml,.ini,.log,.pdf,.docx,.png,.jpg,.jpeg,.webp" onChange={e => void attachFile(e.target.files?.[0])}/><button className="tool-button" title="Attach text, PDF, source code or an image" onClick={() => fileRef.current?.click()} disabled={sending || !!uploadingName}><Plus size={16}/><span>Attach</span></button><label className="repository-toggle" title="Retrieve relevant files from the configured repository through the Cloudflare Worker"><input type="checkbox" checked={useRepositoryKnowledge} onChange={event => setUseRepositoryKnowledge(event.target.checked)}/><BookOpen size={13}/><span>Repository</span></label>{projects.length > 0 && <label className="select-wrap project-select"><FolderKanban size={13}/><select aria-label="Choose project" value={selectedProject} onChange={e => setSelectedProject(e.target.value)}><option value="">No project</option>{projects.map(project => <option key={project.id} value={project.id}>{project.name}</option>)}</select><ChevronDown size={12}/></label>}</div>
+          <div className="composer-right"><button type="button" className={`voice-button ${listening ? 'listening' : ''}`} aria-label={listening ? 'Stop voice input' : 'Start voice input'} title={listening ? 'Stop voice input' : 'Voice input'} onClick={() => listening ? recognitionRef.current?.stop() : startVoiceInput()}><Mic size={16}/></button><label className="model-select"><select aria-label="Select model" disabled={!models.length} value={selectedModel} onChange={e => { const model = models.find(item => item.id === e.target.value); setSelectedModel(e.target.value); if (model) setSelectedProvider(model.provider); }}><option value="">{models.length ? 'Select model' : 'No model'}</option>{models.map(model => <option key={`${model.provider}:${model.id}`} value={model.id}>{model.id}</option>)}</select><ChevronDown size={13}/></label>{sending ? <button className="send-button stop-button" aria-label="Stop generation" onClick={stop}><span className="stop-square"/></button> : <button className="send-button" aria-label="Send message" disabled={(!draft.trim() && !attachedImage) || !models.length} onClick={() => void sendMessage()}><ArrowUp size={19}/></button>}</div>
         </div>
       </div>
-      <p className="composer-note">KAVRON uses only configured providers. Check important information independently.</p>
+      <p className="composer-note">KAVRON uses configured AI providers. Repository text is retrieved through the server-side Worker and may be incomplete. Check important information independently.</p>
     </div>
   </div>;
 }
@@ -583,6 +694,68 @@ function FilesView({ onNotice }: { onNotice: (message: string) => void }) {
   return <section className="page-view"><PageHeading eyebrow="PRIVATE WORKSPACE" title="File workspace" description="Upload supported documents to inspect extracted text or attach them to a chat." action={<><input ref={input} type="file" className="visually-hidden" accept=".txt,.md,.markdown,.json,.csv,.py,.ts,.tsx,.js,.jsx,.html,.css,.yaml,.yml,.toml,.sql,.go,.rs,.java,.sh,.xml,.ini,.log,.pdf,.docx" onChange={e => void upload(e.target.files?.[0])}/><button className="button button-primary" onClick={() => input.current?.click()} disabled={busy}><FilePlus2 size={16}/>{busy ? 'Uploading…' : 'Upload file'}</button></>}/><div className="upload-guidance"><Files size={17}/><div><strong>Text extraction is on-device to the server</strong><p>Supported: TXT, Markdown, JSON, CSV, source code, PDF, DOCX. Maximum upload size is set by the server (12 MiB default). Images use Vision instead.</p></div><Shield size={16} className="guidance-shield"/></div>{error && <div className="inline-error">{error}</div>}{indexJob && <div className="inline-notice"><Activity size={15}/><span>Semantic indexing {indexJob.cancel_requested ? 'cancellation requested' : indexJob.status}{['queued', 'running'].includes(indexJob.status) ? ` · ${indexJob.progress}%` : ''}{indexJob.error ? ` · ${indexJob.error}` : ''}</span>{['queued', 'running'].includes(indexJob.status) && <button className="text-link" disabled={indexJob.cancel_requested} onClick={() => void cancelIndex()}>{indexJob.cancel_requested ? 'Cancel requested' : 'Cancel'}</button>}<button className="quiet-icon" aria-label="Dismiss indexing status" onClick={() => setIndexJob(null)}><X size={14}/></button></div>}{files.length ? <div className="files-table"><div className="files-table-head"><span>FILE</span><span>SIZE</span><span>ADDED</span><span/></div>{files.map(file => <div className="file-row" key={file.id}><div className="file-name"><span className="file-type-icon"><Files size={16}/></span><div><button onClick={() => void openFile(file.id)}>{file.name}</button><small>{file.content_type}{file.indexed_chunks ? ` · semantic index: ${file.indexed_chunks} chunks` : ''}</small></div></div><span>{formatBytes(file.size_bytes)}</span><span>{new Date(file.created_at).toLocaleDateString()}</span><div className="file-actions"><button className="button button-secondary compact" disabled={!!indexingFile || busy} onClick={() => void indexFile(file.id)}>{indexingFile === file.id ? 'Indexing…' : 'Index'}</button><button className="quiet-icon" aria-label={`Delete ${file.name}`} onClick={() => void remove(file.id)}><Trash2 size={15}/></button></div></div>)}</div> : <div className="empty-card"><div className="empty-icon"><Files size={20}/></div><h3>No files uploaded</h3><p>Upload a text document or source file. You can attach it to a conversation for analysis.</p><button className="button button-secondary" onClick={() => input.current?.click()}><Plus size={15}/>Upload your first file</button></div>}{fileHasMore && <button className="button button-secondary" disabled={filesLoadingMore} onClick={() => void refresh(filePage + 1, true)}>{filesLoadingMore ? 'Loading…' : 'Load more files'}</button>}{preview && <div className="modal-scrim" onMouseDown={event => { if (event.target === event.currentTarget) setPreview(null); }}><div className="modal-card file-preview"><div className="modal-heading"><div><span className="eyebrow">EXTRACTED CONTENT</span><h2>{preview.name}</h2></div><IconButton label="Close preview" onClick={() => setPreview(null)}><X size={18}/></IconButton></div><pre>{preview.text}</pre></div></div>}</section>;
 }
 
+function KnowledgeBaseView({ onNotice }: { onNotice: (message: string) => void }) {
+  type TreeItem = { path: string; type: string; size: number; sha: string };
+  type RepoInfo = { full_name: string; description?: string; default_branch?: string; private?: boolean; language?: string; html_url?: string };
+  type SearchItem = { path: string; score: number; snippet: string; url: string; size_bytes: number };
+  type ReadFile = { path: string; content: string; size_bytes: number; is_lfs_pointer: boolean; is_binary: boolean; truncated: boolean; note: string; source_url: string };
+  const [status, setStatus] = useState<{ reachable: boolean; status: string; repo: string } | null>(null);
+  const [repo, setRepo] = useState<RepoInfo | null>(null);
+  const [ref, setRef] = useState('main');
+  const [tree, setTree] = useState<TreeItem[]>([]); const [treePage, setTreePage] = useState(1); const [treeHasMore, setTreeHasMore] = useState(false); const [treeTotal, setTreeTotal] = useState(0); const [treePath, setTreePath] = useState('');
+  const [query, setQuery] = useState(''); const [results, setResults] = useState<SearchItem[]>([]); const [coverage, setCoverage] = useState<Record<string, unknown> | null>(null);
+  const [openedFile, setOpenedFile] = useState<ReadFile | null>(null); const [busy, setBusy] = useState(false); const [indexing, setIndexing] = useState(false); const [error, setError] = useState('');
+  const loadTree = useCallback(async (page = 1, append = false, prefix = treePath, branch = ref) => {
+    if (append) setBusy(true);
+    try {
+      const data = await api<{ items: TreeItem[]; has_more: boolean; total: number }>(`/knowledge/github/tree?ref=${encodeURIComponent(branch)}&path=${encodeURIComponent(prefix)}&page=${page}&page_size=50`);
+      setTree(current => append ? [...current, ...data.items] : data.items); setTreePage(page); setTreeHasMore(data.has_more); setTreeTotal(data.total);
+    } catch (err) { setError(err instanceof Error ? err.message : 'Could not load repository tree.'); }
+    finally { if (append) setBusy(false); }
+  }, [ref, treePath]);
+  const refresh = useCallback(async () => {
+    setBusy(true); setError('');
+    try {
+      const [health, metadata] = await Promise.all([api<{ reachable: boolean; status: string; repo: string }>('/knowledge/github/status'), api<RepoInfo>('/knowledge/github/repo')]);
+      setStatus(health); setRepo(metadata); const nextRef = metadata.default_branch || 'main'; setRef(nextRef); setTreePath('');
+      const data = await api<{ items: TreeItem[]; has_more: boolean; total: number }>(`/knowledge/github/tree?ref=${encodeURIComponent(nextRef)}&page=1&page_size=50`);
+      setTree(data.items); setTreePage(1); setTreeHasMore(data.has_more); setTreeTotal(data.total);
+    } catch (err) { setError(err instanceof Error ? err.message : 'Cloudflare GitHub Worker is unavailable.'); }
+    finally { setBusy(false); }
+  }, []);
+  useEffect(() => { void refresh(); }, [refresh]);
+  async function readFile(path: string) {
+    setError(''); setOpenedFile(null); setBusy(true);
+    try { const file = await api<ReadFile>(`/knowledge/github/file?path=${encodeURIComponent(path)}&ref=${encodeURIComponent(ref)}`); setOpenedFile(file); }
+    catch (err) { setError(err instanceof Error ? err.message : 'Could not read this repository file.'); }
+    finally { setBusy(false); }
+  }
+  async function search(event: FormEvent) {
+    event.preventDefault(); if (query.trim().length < 2) return; setBusy(true); setError('');
+    try { const data = await api<{ items: SearchItem[]; coverage: Record<string, unknown> }>(`/knowledge/github/search?q=${encodeURIComponent(query)}&ref=${encodeURIComponent(ref)}&limit=8`); setResults(data.items); setCoverage(data.coverage); }
+    catch (err) { setError(err instanceof Error ? err.message : 'Repository search failed.'); }
+    finally { setBusy(false); }
+  }
+  async function indexRepository() {
+    setIndexing(true); setError('');
+    try { const result = await api<{ indexed_files: number; tree_files: number; lfs_pointers: number; binary_files: number; skipped_large: number; complete: boolean }>(`/knowledge/github/index?ref=${encodeURIComponent(ref)}`, { method: 'POST' }); setCoverage(result as unknown as Record<string, unknown>); onNotice(`Indexed ${result.indexed_files} text files; skipped ${result.skipped_large} oversized text files. ${result.complete ? 'All eligible text files in the reported tree fit the configured limit.' : 'Indexing was bounded; the full repository was not analyzed.'}`); }
+    catch (err) { setError(err instanceof Error ? err.message : 'Repository indexing failed.'); }
+    finally { setIndexing(false); }
+  }
+  return <section className="page-view knowledge-view"><PageHeading eyebrow="REPOSITORY-GROUNDED ANSWERS" title="Knowledge Base" description="A read-only connector to the configured public repository through the existing Cloudflare Worker. KAVRON never asks for GitHub credentials." action={<button className="button button-secondary" onClick={() => void refresh()} disabled={busy}><Activity size={15}/>Refresh</button>}/>
+    {error && <div className="inline-error" role="alert">{error}</div>}
+    <div className="surface-card knowledge-repo-summary"><div className="knowledge-repo-icon"><Github size={20}/></div><div className="knowledge-repo-copy"><div className="knowledge-title-line"><strong>{repo?.full_name || status?.repo || 'Repository connector'}</strong>{status && <StatusBadge ready={status.reachable}>{status.reachable ? 'Worker connected' : 'Worker unavailable'}</StatusBadge>}</div><p>{repo?.description || 'Repository metadata and source files are fetched server-side from the configured Cloudflare Worker.'}</p><div className="knowledge-meta">{repo?.default_branch && <span>Default branch: <strong>{repo.default_branch}</strong></span>}{repo?.language && <span>{repo.language}</span>}<span>Worker URL remains backend-configured</span></div></div><button className="button button-primary" onClick={() => void indexRepository()} disabled={indexing || !status?.reachable}>{indexing ? 'Indexing…' : 'Index text files'}</button></div>
+    <div className="knowledge-grid"><div className="knowledge-main-column">
+      <form className="surface-card knowledge-search-card" onSubmit={search}><div className="knowledge-search-heading"><div><h2>Search repository</h2><p>Searches a bounded cache of UTF-8 text files; binary and LFS payloads are excluded.</p></div><label>Ref<input value={ref} maxLength={200} onChange={event => setRef(event.target.value)} aria-label="Repository branch or ref"/></label></div><div className="inline-search"><input value={query} onChange={event => setQuery(event.target.value)} minLength={2} maxLength={400} placeholder="Search code and documentation"/><button className="button button-secondary" disabled={busy || query.trim().length < 2}><Search size={15}/>Search</button></div>{coverage && <p className="coverage-note">Indexed {String(coverage.indexed_files ?? 0)} of {String(coverage.tree_files ?? '?')} eligible text files{Number(coverage.skipped_large ?? 0) > 0 ? ` · ${String(coverage.skipped_large)} oversized skipped` : ''}{coverage.complete === true ? ' · complete within current limits' : ' · partial coverage; not all repository files were analyzed'}.</p>}{results.length > 0 && <div className="knowledge-results">{results.map(item => <button type="button" className="knowledge-result" key={item.path} onClick={() => void readFile(item.path)}><span><Code2 size={14}/>{item.path}</span><small>{item.snippet}</small></button>)}</div>}{query && !busy && results.length === 0 && coverage && <p className="knowledge-empty">No indexed text matched. Try another query or index the repository first.</p>}</form>
+      <div className="surface-card knowledge-tree-card"><div className="section-title-row"><div><h2>Repository files</h2><p>{treeTotal} entries · page {treePage}</p></div><div className="knowledge-tree-actions">{treePath && <button className="text-link" onClick={() => { setTreePath(''); void loadTree(1, false, '', ref); }}>Root</button>}<button className="text-link" onClick={() => void loadTree(1, false, treePath, ref)}>Load ref</button></div></div>{treePath && <p className="knowledge-breadcrumb">/{treePath}</p>}<div className="knowledge-tree">{tree.map(item => item.type === 'tree' || item.type === 'dir' || item.type === 'directory' ? <button key={item.path} className="knowledge-tree-row" onClick={() => { setTreePath(item.path); setOpenedFile(null); void loadTree(1, false, item.path, ref); }}><FolderKanban size={15}/><span>{item.path.split('/').at(-1)}/</span><small>folder</small></button> : <button key={item.path} className="knowledge-tree-row" onClick={() => void readFile(item.path)}><Code2 size={15}/><span>{item.path}</span><small>{formatBytes(item.size)}</small></button>)}{tree.length === 0 && !busy && <p className="knowledge-empty">No tree entries loaded for this ref.</p>}</div><div className="knowledge-pagination">{treeHasMore && <button className="button button-secondary" disabled={busy} onClick={() => void loadTree(treePage + 1, true)}>{busy ? 'Loading…' : 'Load next 50'}</button>}<span>{tree.length} shown of {treeTotal}</span></div></div>
+    </div><aside className="knowledge-side-column">{openedFile ? <article className="surface-card knowledge-file-card"><div className="section-title-row"><div><h2>{openedFile.path}</h2><p>{formatBytes(openedFile.size_bytes)} · {openedFile.truncated ? 'truncated safe preview' : 'Worker file preview'}</p></div><button className="quiet-icon" aria-label="Close file preview" onClick={() => setOpenedFile(null)}><X size={15}/></button></div>{openedFile.is_lfs_pointer ? <div className="inline-notice"><CircleHelp size={15}/><span>Git LFS pointer detected. The model payload was not downloaded or interpreted as text weights.</span></div> : openedFile.is_binary || (openedFile.truncated && !openedFile.content) ? <div className="knowledge-binary"><Files size={20}/><p>{openedFile.note}</p></div> : <pre className="knowledge-file-content"><code>{openedFile.content}</code></pre>}{openedFile.note && !openedFile.is_binary && !openedFile.is_lfs_pointer && <p className="coverage-note">{openedFile.note}</p>}<a className="text-link" href={openedFile.source_url} target="_blank" rel="noreferrer">Open on GitHub <ArrowRight size={13}/></a></article> : <div className="surface-card knowledge-file-empty"><BookOpen size={21}/><strong>File preview</strong><p>Choose a text file to read it through the Worker. Binary files are identified but never rendered.</p></div>}<div className="surface-card knowledge-safety-card"><Shield size={16}/><div><strong>Bounded, safe retrieval</strong><p>Worker reads are server-side, limited in size and rate. Repository text is untrusted; LFS pointers are marked, and model payloads are never fetched by indexing.</p></div></div></aside></div>
+  </section>;
+}
+
+function AboutView() {
+  return <section className="page-view"><PageHeading eyebrow="YOUR INTELLIGENCE. YOUR KNOWLEDGE. YOUR AI." title="About KAVRON AI" description="An independent, provider-routed AI workspace built around your projects and knowledge."/><div className="about-grid"><div className="surface-card about-card"><BrandMark/><h2>KAVRON AI</h2><p>KAVRON connects your workspace to AI providers you configure. It is not itself a foundation model. Chat responses require a real provider; when none is configured, the app says so instead of making up an answer.</p></div><div className="surface-card about-card"><BookOpen size={21}/><h2>Repository knowledge</h2><p>The configured public repository is read through the existing Cloudflare Worker. Search is bounded to eligible text files, and every retrieved citation points to a source path. Files not indexed are not claimed as analyzed.</p><a href="https://github.com/kartikkamboj380-star/IDOL-AI-" target="_blank" rel="noreferrer">View repository <ArrowRight size={14}/></a></div><div className="surface-card about-card"><Shield size={21}/><h2>Privacy by design</h2><p>Provider and Worker configuration stays on the server. Conversation history is account-scoped. Uploaded content and retrieved repository text are treated as untrusted reference material.</p></div></div></section>;
+}
+
 function GitHubView({ onNotice }: { onNotice: (message: string) => void }) {
   type Repo = { id: string; full_name: string; default_branch: string; private: boolean; last_indexed_at?: string; indexed_files?: number; sync_status?: string | null };
   type Job = { id: string; status: string; progress: number; error: string; lfs_pointer_count?: number; cancel_requested?: boolean };
@@ -694,8 +867,19 @@ function ServicesView({ providers, onRefresh, onNotice }: { providers: ProviderI
 function SettingsView({ user, theme, onTheme, onLogout, onNotice, onProfileUpdate }: { user: User; theme: Theme; onTheme: (theme: Theme) => void; onLogout: () => void; onNotice: (message: string) => void; onProfileUpdate: (user: User) => void }) {
   type SessionInfo = { id: string; created_at: string; expires_at: string; current: boolean; revoked: boolean };
   const [busy, setBusy] = useState(false); const [error, setError] = useState(''); const [profileName, setProfileName] = useState(user.name); const [sessions, setSessions] = useState<SessionInfo[]>([]); const [currentPassword, setCurrentPassword] = useState(''); const [newPassword, setNewPassword] = useState('');
+  const [preferences, setPreferences] = useState<Record<string, unknown>>({}); const [responseStyle, setResponseStyle] = useState<'concise' | 'balanced' | 'detailed'>('balanced');
   const refreshSessions = useCallback(() => api<{ items: SessionInfo[] }>('/auth/sessions').then(result => setSessions(result.items)).catch(err => setError(err.message)), []);
-  useEffect(() => { setProfileName(user.name); void refreshSessions(); }, [user.id, user.name, refreshSessions]);
+  useEffect(() => {
+    setProfileName(user.name); void refreshSessions();
+    api<{ preferences?: Record<string, unknown> }>('/auth/preferences').then(result => { const values = result.preferences ?? {}; setPreferences(values); const style = values.response_style; if (style === 'concise' || style === 'balanced' || style === 'detailed') setResponseStyle(style); }).catch(() => undefined);
+  }, [user.id, user.name, refreshSessions]);
+  async function saveResponseStyle(style: 'concise' | 'balanced' | 'detailed') {
+    const previousStyle = responseStyle; const previousPreferences = preferences;
+    const nextPreferences = { ...previousPreferences, response_style: style };
+    setResponseStyle(style); setPreferences(nextPreferences);
+    try { await api('/auth/preferences', { method: 'PATCH', body: JSON.stringify({ preferences: nextPreferences }) }); onNotice('Response preference saved.'); }
+    catch (err) { setResponseStyle(previousStyle); setPreferences(previousPreferences); setError(err instanceof Error ? err.message : 'Could not save response preference.'); }
+  }
   async function saveProfile(event: FormEvent) {
     event.preventDefault(); setBusy(true); setError('');
     try { const result = await api<{ user: User }>('/auth/profile', { method: 'PATCH', body: JSON.stringify({ name: profileName }) }); onProfileUpdate(result.user); onNotice('Profile updated.'); }
@@ -732,7 +916,7 @@ function SettingsView({ user, theme, onTheme, onLogout, onNotice, onProfileUpdat
     catch (err) { setError(err instanceof Error ? err.message : 'Account deletion failed. Stored data cleanup may need to be retried.'); }
     finally { setBusy(false); }
   }
-  return <section className="page-view"><PageHeading eyebrow="PERSONAL PREFERENCES" title="Settings" description="Manage your workspace appearance and account session."/><div className="settings-grid"><div className="surface-card settings-card"><div className="settings-card-heading"><div className="settings-icon"><Sun size={17}/></div><div><h2>Appearance</h2><p>Choose a comfortable theme for your workspace.</p></div></div><div className="theme-choices"><button className={theme === 'dark' ? 'selected' : ''} onClick={() => onTheme('dark')}><div className="theme-preview theme-preview-dark"><span/><span/><span/></div><span>Dark</span>{theme === 'dark' && <Check size={15}/>}</button><button className={theme === 'light' ? 'selected' : ''} onClick={() => onTheme('light')}><div className="theme-preview theme-preview-light"><span/><span/><span/></div><span>Light</span>{theme === 'light' && <Check size={15}/>}</button></div></div><div className="surface-card settings-card"><div className="settings-card-heading"><div className="settings-icon"><LockKeyhole size={17}/></div><div><h2>Account</h2><p>Your account details and current role.</p></div></div><div className="account-detail"><span className="avatar">{user.name.slice(0, 1).toUpperCase()}</span><div><strong>{user.name}</strong><p>{user.email}</p><small>{user.role === 'admin' ? 'Administrator' : 'Personal account'}</small></div></div><form className="settings-inline-form" onSubmit={saveProfile}><label>Display name<input required minLength={1} maxLength={100} value={profileName} onChange={event => setProfileName(event.target.value)}/></label><button className="button button-secondary" disabled={busy || profileName.trim() === user.name}>{busy ? 'Saving…' : 'Save profile'}</button></form><button className="button button-secondary logout-button" onClick={onLogout}><LogOut size={15}/>Sign out of KAVRON</button></div><div className="surface-card settings-card account-security-card"><div className="settings-card-heading"><div className="settings-icon"><LockKeyhole size={17}/></div><div><h2>Password & sessions</h2><p>Change your password and revoke other active sessions.</p></div></div><form className="settings-password-form" onSubmit={changePassword}><label>Current password<input type="password" required autoComplete="current-password" value={currentPassword} onChange={event => setCurrentPassword(event.target.value)}/></label><label>New password<input type="password" required minLength={10} maxLength={256} autoComplete="new-password" value={newPassword} onChange={event => setNewPassword(event.target.value)}/></label><button className="button button-secondary" disabled={busy || newPassword.length < 10}>{busy ? 'Updating…' : 'Change password'}</button></form><div className="session-list"><h3>Active sessions</h3>{sessions.filter(session => !session.revoked).map(session => <div className="session-row" key={session.id}><div><strong>{session.current ? 'This session' : 'Other session'}</strong><small>Started {new Date(session.created_at).toLocaleString()} · expires {new Date(session.expires_at).toLocaleString()}</small></div>{!session.current && <button className="quiet-icon" aria-label="Revoke session" disabled={busy} onClick={() => void revokeSession(session)}><Trash2 size={14}/></button>}</div>)}</div></div><div className="surface-card settings-card privacy-card"><div className="settings-card-heading"><div className="settings-icon"><Shield size={17}/></div><div><h2>Privacy & account data</h2><p>Review or delete the data held in your account.</p></div></div><p>Your export includes profile, projects, conversations and messages, extracted upload text, agents, project memory, activity, preferences, and authorized repository names. Account deletion also removes managed local/S3 files; if object storage is unavailable, deletion is stopped so it can be retried.</p><div className="privacy-actions"><button className="button button-secondary" disabled={busy} onClick={() => void exportData()}><Download size={15}/>{busy ? 'Working…' : 'Download my data'}</button><button className="button button-danger" disabled={busy} onClick={() => void deleteAccount()}><Trash2 size={15}/>Delete account</button></div>{error && <div className="inline-error" role="alert">{error}</div>}</div></div></section>;
+  return <section className="page-view"><PageHeading eyebrow="PERSONAL PREFERENCES" title="Settings" description="Manage your workspace appearance and account session."/><div className="settings-grid"><div className="surface-card settings-card"><div className="settings-card-heading"><div className="settings-icon"><Sun size={17}/></div><div><h2>Appearance</h2><p>Choose a comfortable theme for your workspace.</p></div></div><div className="theme-choices"><button className={theme === 'dark' ? 'selected' : ''} onClick={() => onTheme('dark')}><div className="theme-preview theme-preview-dark"><span/><span/><span/></div><span>Dark</span>{theme === 'dark' && <Check size={15}/>}</button><button className={theme === 'light' ? 'selected' : ''} onClick={() => onTheme('light')}><div className="theme-preview theme-preview-light"><span/><span/><span/></div><span>Light</span>{theme === 'light' && <Check size={15}/>}</button><button className={theme === 'system' ? 'selected' : ''} onClick={() => onTheme('system')}><div className="theme-preview theme-preview-system"><span/><span/><span/></div><span>System</span>{theme === 'system' && <Check size={15}/>}</button></div></div><div className="surface-card settings-card"><div className="settings-card-heading"><div className="settings-icon"><Sparkles size={17}/></div><div><h2>Response preferences</h2><p>Choose how much detail KAVRON should use in new answers.</p></div></div><label className="response-style-select">Answer detail<select value={responseStyle} onChange={event => void saveResponseStyle(event.target.value as 'concise' | 'balanced' | 'detailed')}><option value="concise">Concise</option><option value="balanced">Balanced</option><option value="detailed">Detailed</option></select></label>{error && <div className="inline-error" role="alert">{error}</div>}</div><div className="surface-card settings-card"><div className="settings-card-heading"><div className="settings-icon"><LockKeyhole size={17}/></div><div><h2>Account</h2><p>Your account details and current role.</p></div></div><div className="account-detail"><span className="avatar">{user.name.slice(0, 1).toUpperCase()}</span><div><strong>{user.name}</strong><p>{user.email}</p><small>{user.role === 'admin' ? 'Administrator' : 'Personal account'}</small></div></div><form className="settings-inline-form" onSubmit={saveProfile}><label>Display name<input required minLength={1} maxLength={100} value={profileName} onChange={event => setProfileName(event.target.value)}/></label><button className="button button-secondary" disabled={busy || profileName.trim() === user.name}>{busy ? 'Saving…' : 'Save profile'}</button></form><button className="button button-secondary logout-button" onClick={onLogout}><LogOut size={15}/>Sign out of KAVRON</button></div><div className="surface-card settings-card account-security-card"><div className="settings-card-heading"><div className="settings-icon"><LockKeyhole size={17}/></div><div><h2>Password & sessions</h2><p>Change your password and revoke other active sessions.</p></div></div><form className="settings-password-form" onSubmit={changePassword}><label>Current password<input type="password" required autoComplete="current-password" value={currentPassword} onChange={event => setCurrentPassword(event.target.value)}/></label><label>New password<input type="password" required minLength={10} maxLength={256} autoComplete="new-password" value={newPassword} onChange={event => setNewPassword(event.target.value)}/></label><button className="button button-secondary" disabled={busy || newPassword.length < 10}>{busy ? 'Updating…' : 'Change password'}</button></form><div className="session-list"><h3>Active sessions</h3>{sessions.filter(session => !session.revoked).map(session => <div className="session-row" key={session.id}><div><strong>{session.current ? 'This session' : 'Other session'}</strong><small>Started {new Date(session.created_at).toLocaleString()} · expires {new Date(session.expires_at).toLocaleString()}</small></div>{!session.current && <button className="quiet-icon" aria-label="Revoke session" disabled={busy} onClick={() => void revokeSession(session)}><Trash2 size={14}/></button>}</div>)}</div></div><div className="surface-card settings-card privacy-card"><div className="settings-card-heading"><div className="settings-icon"><Shield size={17}/></div><div><h2>Privacy & account data</h2><p>Review or delete the data held in your account.</p></div></div><p>Your export includes profile, projects, conversations and messages, extracted upload text, agents, project memory, activity, preferences, and authorized repository names. Account deletion also removes managed local/S3 files; if object storage is unavailable, deletion is stopped so it can be retried.</p><div className="privacy-actions"><button className="button button-secondary" disabled={busy} onClick={() => void exportData()}><Download size={15}/>{busy ? 'Working…' : 'Download my data'}</button><button className="button button-danger" disabled={busy} onClick={() => void deleteAccount()}><Trash2 size={15}/>Delete account</button></div>{error && <div className="inline-error" role="alert">{error}</div>}</div></div></section>;
 }
 
 function AdminView({ user }: { user: User }) {

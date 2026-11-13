@@ -4,8 +4,8 @@ on:
   workflow_dispatch:
     inputs:
       server_url:
-        description: 'HTTPS origin of the deployed KAVRON web app (required; the app uses same-origin cookie auth)'
-        required: true
+        description: 'HTTPS origin of the deployed KAVRON web app (leave blank for UI shell; backend features need a server)'
+        required: false
         type: string
 
 permissions:
@@ -26,15 +26,14 @@ jobs:
           java-version: '21'
           cache: gradle
       - run: npm ci
-      - run: npm run build
-      - name: Add Android platform
+      - name: Install Android SDK platform
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager --install "platforms;android-36" "build-tools;36.0.0"
+      - name: Build web assets and sync native project
         env:
           KAVRON_ANDROID_SERVER_URL: ${{ inputs.server_url }}
-        run: npx cap add android
-      - name: Sync native project
-        env:
-          KAVRON_ANDROID_SERVER_URL: ${{ inputs.server_url }}
-        run: npx cap sync android
+        run: npm run android:sync
       - name: Assemble debug APK
         working-directory: android
         run: ./gradlew --no-daemon assembleDebug

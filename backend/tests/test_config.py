@@ -16,6 +16,18 @@ def test_database_pool_and_job_quota_bounds_are_validated():
         validate_runtime_settings(replace(settings, max_active_jobs_per_user=0))
 
 
+def test_github_worker_requires_https_and_safe_repository_name():
+    with pytest.raises(RuntimeError, match="KAVRON_GITHUB_WORKER_URL"):
+        validate_runtime_settings(replace(settings, github_worker_url="http://worker.example"))
+    with pytest.raises(RuntimeError, match="KAVRON_GITHUB_KNOWLEDGE_REPO"):
+        validate_runtime_settings(replace(settings, github_knowledge_repo="../private"))
+
+
+def test_provider_timeout_is_bounded():
+    with pytest.raises(RuntimeError, match="PROVIDER_TIMEOUT"):
+        validate_runtime_settings(replace(settings, provider_timeout_seconds=0))
+
+
 def test_production_rejects_default_or_short_session_secret():
     with pytest.raises(RuntimeError, match="KAVRON_SESSION_SECRET"):
         validate_runtime_settings(replace(settings, environment="production", session_secret="short", public_origin="https://kavron.example.com", allowed_origins_raw="https://kavron.example.com"))
