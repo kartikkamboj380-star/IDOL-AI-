@@ -29,10 +29,10 @@ jobs:
           java-version: '21'
           cache: gradle
       - run: npm ci
+      - name: Set up Android SDK tools
+        uses: android-actions/setup-android@v3
       - name: Install Android SDK platform
-        run: |
-          yes | sdkmanager --licenses >/dev/null || true
-          sdkmanager --install "platforms;android-36" "build-tools;36.0.0"
+        run: sdkmanager --install "platforms;android-36" "build-tools;36.0.0"
       - name: Build web assets and sync native project
         env:
           KAVRON_ANDROID_SERVER_URL: ${{ inputs.server_url }}
