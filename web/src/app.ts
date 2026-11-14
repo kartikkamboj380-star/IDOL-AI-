@@ -18,7 +18,7 @@ import { exportConversations } from './lib/storage.js';
 import { renderAssistantMessage, renderUserMessage, type MessageCallbacks } from './components/message.js';
 import { ProcessingIndicator } from './components/processing.js';
 import { renderEmptyState } from './components/empty-state.js';
-import { openDialog } from './components/dialog.js';
+import { closeAllDialogs, hasOpenDialog, openDialog } from './components/dialog.js';
 import { openSourcesDialog } from './components/sources-dialog.js';
 import { openFileBrowser } from './components/file-browser.js';
 import { showToast } from './components/toast.js';
@@ -71,6 +71,9 @@ export class IdolApp {
   private statusPollTimer: number | null = null;
   private isNearBottom = true;
   private connectionRetryTimer: number | null = null;
+  private unsubscribe: (() => void) | null = null;
+  private destroyed = false;
+  private readonly teardown = new Set<() => void>();
 
   constructor(root: HTMLElement) {
     this.root = root;
@@ -83,7 +86,7 @@ export class IdolApp {
   async start(): Promise<void> {
     this.buildShell();
     this.attachGlobalHandlers();
-    this.store.subscribe(() => this.renderSidebar());
+    this.unsubscribe = this.store.subscribe(() => this.renderSidebar());
     this.renderSidebar();
     this.renderThread();
     this.renderComposerSources();
@@ -101,6 +104,30 @@ export class IdolApp {
 
     this.restoreDraft();
     this.textareaEl.focus();
+  }
+
+  /**
+   * Releases every timer, listener, and in-flight request this controller owns.
+   * Safe to call more than once. Without this the app cannot be embedded,
+   * hot-reloaded, or unit-tested without leaking the status poller.
+   */
+  destroy(): void {
+    if (this.destroyed) return;
+    this.destroyed = true;
+    this.abortController?.abort();
+    this.abortController = null;
+    if (this.statusPollTimer !== null) {
+      window.clearInterval(this.statusPollTimer);
+      this.statusPollTimer = null;
+    }
+    if (this.connectionRetryTimer !== null) {
+      window.clearTimeout(this.connectionRetryTimer);
+      this.connectionRetryTimer = null;
+    }
+    this.unsubscribe?.();
+    this.unsubscribe = null;
+    for (const cleanup of this.teardown) cleanup();
+    this.teardown.clear();
   }
 
   /* ================================================================== */
@@ -211,7 +238,9 @@ export class IdolApp {
     this.sourcesRowEl = el('div', { class: 'composer__sources', 'aria-label': 'Restrict search to sources' });
     composer.append(this.sourcesRowEl);
 
-    const frame = el('div', { class: 'composer__frame' });
+    // A real <form> gives the composer correct semantics: screen readers
+    // announce it, Enter submits it, and the send button is a submit button.
+    const frame = el('form', { class: 'composer__frame', 'aria-label': 'Send a message' });
     const row = el('div', { class: 'composer__input-row' });
 
     this.textareaEl = el('textarea', {
@@ -229,9 +258,10 @@ export class IdolApp {
     });
 
     this.sendButtonEl = el('button', {
-      type: 'button',
+      type: 'submit',
       class: 'composer__send',
       'aria-label': 'Send message',
+      title: 'Send (Enter)',
       disabled: true,
     }) as HTMLButtonElement;
     this.sendButtonEl.innerHTML = `<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${icons.send}</svg>`;
@@ -249,6 +279,10 @@ export class IdolApp {
 
     row.append(this.textareaEl, this.sendButtonEl, this.stopButtonEl);
     frame.append(row);
+    frame.addEventListener('submit', (event) => {
+      event.preventDefault();
+      void this.sendCurrent();
+    });
     composer.append(frame);
 
     this.hintEl = el('div', { class: 'composer__hint' });
@@ -577,7 +611,10 @@ export class IdolApp {
 
   private onComposerKeyDown(event: KeyboardEvent): void {
     if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {
+      // preventDefault also suppresses the form's implicit submission, so the
+      // message is sent exactly once.
       event.preventDefault();
+      event.stopPropagation();
       void this.sendCurrent();
       return;
     }
@@ -1236,13 +1273,36 @@ export class IdolApp {
   /* ================================================================== */
 
   private attachGlobalHandlers(): void {
-    window.addEventListener('resize', debounce(() => this.renderSidebar(), 150));
+    const on = <K extends keyof WindowEventMap>(
+      target: Window,
+      type: K,
+      handler: (event: WindowEventMap[K]) => void,
+      options?: AddEventListenerOptions,
+    ): void => {
+      target.addEventListener(type, handler as EventListener, options);
+      this.teardown.add(() => target.removeEventListener(type, handler as EventListener, options));
+    };
 
-    window.addEventListener('keydown', (event) => {
+    on(window, 'resize', debounce(() => this.renderSidebar(), 150));
+
+    on(window, 'keydown', (event) => {
       const meta = event.metaKey || event.ctrlKey;
       const target = event.target as HTMLElement | null;
-      const inField = Boolean(target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable));
+      const inField = Boolean(
+        target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable),
+      );
 
+      // Esc always means "get me out": stop a running answer, else close a dialog.
+      if (event.key === 'Escape') {
+        if (this.abortController) {
+          event.preventDefault();
+          this.stopGeneration();
+        } else if (hasOpenDialog()) {
+          event.preventDefault();
+          closeAllDialogs();
+        }
+        return;
+      }
       if (meta && event.shiftKey && event.key.toLowerCase() === 'o') {
         event.preventDefault();
         this.startNewChat();
@@ -1261,16 +1321,11 @@ export class IdolApp {
       if (!inField && event.key === '/') {
         event.preventDefault();
         this.textareaEl.focus();
-        return;
-      }
-      if (event.key === 'Escape' && this.abortController) {
-        event.preventDefault();
-        this.stopGeneration();
       }
     });
 
     // Warn before losing an in-flight generation.
-    window.addEventListener('beforeunload', (event) => {
+    on(window, 'beforeunload', (event) => {
       if (this.abortController) {
         event.preventDefault();
         event.returnValue = '';
@@ -1278,21 +1333,29 @@ export class IdolApp {
     });
 
     // Keep drafts so a refresh never loses typed text.
-    this.textareaEl.addEventListener('input', debounce(() => this.saveDraft(), 400));
+    const saveDraft = debounce(() => this.saveDraft(), 400);
+    this.textareaEl.addEventListener('input', saveDraft);
+    this.teardown.add(() => this.textareaEl.removeEventListener('input', saveDraft));
 
-    window.matchMedia('(prefers-color-scheme: light)').addEventListener('change', () => {
+    // Follow the OS theme when the user chose "system".
+    const scheme = window.matchMedia('(prefers-color-scheme: light)');
+    const onScheme = (): void => {
       if (this.store.state.preferences.theme === 'system') {
         this.store.setPreferences({ theme: 'system' });
       }
-    });
+    };
+    scheme.addEventListener('change', onScheme);
+    this.teardown.add(() => scheme.removeEventListener('change', onScheme));
 
     // Refresh sources when the tab regains focus (indexing may have finished).
-    document.addEventListener('visibilitychange', () => {
+    const onVisible = (): void => {
       if (document.visibilityState === 'visible') {
         void this.refreshStatus();
         void this.refreshSources();
       }
-    });
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    this.teardown.add(() => document.removeEventListener('visibilitychange', onVisible));
   }
 
   private saveDraft(): void {

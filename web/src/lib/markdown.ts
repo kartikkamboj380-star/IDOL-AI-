@@ -10,8 +10,35 @@
  * Highlighting happens after sanitisation, on text nodes we created ourselves.
  */
 import { Marked } from 'marked';
-import DOMPurify from 'dompurify';
+import DOMPurifyDefault from 'dompurify';
 import { highlightCode } from './highlight.js';
+
+/**
+ * DOMPurify's default export is an instance when a DOM exists at import time, and
+ * its factory function otherwise (SSR, jsdom tests, some bundler orderings).
+ * Normalise once so both shapes work — and so a bundler tree-shaking the default
+ * instance can never silently disable sanitisation.
+ */
+type Sanitizer = {
+  addHook: (name: string, hook: (node: Element) => void) => void;
+  sanitize: (dirty: string, config: Record<string, unknown>) => string;
+};
+
+function resolveSanitizer(): Sanitizer {
+  const candidate = DOMPurifyDefault as unknown as
+    | (Sanitizer & { (window: Window): Sanitizer })
+    | undefined;
+  if (candidate && typeof candidate.sanitize === 'function' && typeof candidate.addHook === 'function') {
+    return candidate as Sanitizer;
+  }
+  if (typeof candidate === 'function' && typeof window !== 'undefined') {
+    return (candidate as unknown as (w: Window) => Sanitizer)(window);
+  }
+  // Last resort: fail loudly rather than render unsanitised HTML.
+  throw new Error('DOM sanitizer unavailable: refusing to render untrusted HTML.');
+}
+
+const DOMPurify: Sanitizer = resolveSanitizer();
 
 export interface RenderOptions {
   /** Source ids that exist for this answer; used to validate [n] markers. */
