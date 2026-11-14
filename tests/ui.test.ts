@@ -353,6 +353,14 @@ describe('app controller', () => {
     assert.ok(root.querySelector('.sidebar'), 'the sidebar must render');
     assert.ok(root.textContent?.includes('IDOL'), 'branding must be present');
 
+    // No interactive element may contain another: nested buttons/links are
+    // invalid HTML and break keyboard focus order.
+    const interactive = [...root.querySelectorAll('button, a[href], input, textarea, select')];
+    for (const node of interactive) {
+      const nested = node.querySelector('button, a[href], input, textarea, select');
+      assert.equal(nested, null, `nested interactive element inside <${node.tagName.toLowerCase()}>`);
+    }
+
     // Type a question and submit it through the real DOM event.
     textarea.value = 'What is this repository about?';
     textarea.dispatchEvent(new dom.window.Event('input', { bubbles: true }));

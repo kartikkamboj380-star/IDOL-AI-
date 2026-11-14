@@ -359,14 +359,20 @@ export class IdolApp {
   }
 
   private renderConversationItem(conversation: Conversation): HTMLElement {
-    const wrapper = el('div', { style: 'position:relative' });
-    const button = el('button', {
-      type: 'button',
+    const wrapper = el('div', { class: 'conversation-row' });
+    const button = el('div', {
       class: 'conversation-item',
       'aria-current': String(conversation.id === this.store.state.activeId),
+    });
+    // The row is a <div> containing two sibling buttons, not a button inside a
+    // button: nested interactive elements are invalid HTML and break keyboard
+    // focus order. The title button carries the "select" action.
+    const selectButton = el('button', {
+      type: 'button',
+      class: 'conversation-item__select',
       title: conversation.title,
     });
-    button.append(el('span', { class: 'conversation-item__title', text: conversation.title }));
+    selectButton.append(el('span', { class: 'conversation-item__title', text: conversation.title }));
 
     const menuButton = el('button', {
       type: 'button',
@@ -380,14 +386,13 @@ export class IdolApp {
       event.stopPropagation();
       this.openConversationMenu(conversation, menuButton);
     });
-    button.append(menuButton);
-
-    button.addEventListener('click', () => {
+    selectButton.addEventListener('click', () => {
       this.store.selectConversation(conversation.id);
       this.renderThread();
       if (window.matchMedia('(max-width: 899px)').matches) this.store.setSidebarOpen(false);
     });
 
+    button.append(selectButton, menuButton);
     wrapper.append(button);
     return wrapper;
   }
