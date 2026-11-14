@@ -112,6 +112,19 @@ jobs:
             echo "No keystore secret; the APK will be debug-signed."
           fi
 
+      - name: Make sure a debug keystore exists
+        # Gradle signs with it when no release keystore is configured, and the SDK
+        # ships one only after some tool creates it.
+        run: |
+          KEYSTORE="$HOME/.android/debug.keystore"
+          if [ ! -f "$KEYSTORE" ]; then
+            mkdir -p "$HOME/.android"
+            keytool -genkeypair -v -keystore "$KEYSTORE" -storepass android -keypass android \
+              -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10000 \
+              -dname "CN=Android Debug,O=Android,C=US"
+          fi
+          ls -l "$KEYSTORE"
+
       - name: Assemble the APK
         id: assemble
         working-directory: android

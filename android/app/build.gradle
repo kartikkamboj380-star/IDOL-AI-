@@ -20,6 +20,15 @@ android {
     // used when present; otherwise the debug key, which installs fine but cannot
     // be published to Play. See android/signing-note.md.
     signingConfigs {
+        // Explicit, because `signingConfigs.debug` is only populated once the
+        // debug build type is configured, and the release block below is
+        // evaluated first. The SDK's default debug key path and password.
+        debug {
+            storeFile file(System.getProperty('user.home') + '/.android/debug.keystore')
+            storePassword 'android'
+            keyAlias 'androiddebugkey'
+            keyPassword 'android'
+        }
         release {
             def storePath = System.getenv('IDOL_KEYSTORE_PATH')
             if (storePath != null && file(storePath).exists()) {
@@ -35,10 +44,15 @@ android {
         release {
             minifyEnabled false
             shrinkResources false
+            // Statement form on purpose: `signingConfig a ? b : c` parses the
+            // condition as the argument, which fails at configure time with a
+            // Boolean-cast-to-SigningConfig ClassCastException.
             def configured = System.getenv('IDOL_KEYSTORE_PATH')
-            signingConfig (configured != null && file(configured).exists())
-                ? signingConfigs.release
-                : signingConfigs.debug
+            if (configured != null && file(configured).exists()) {
+                signingConfig signingConfigs.release
+            } else {
+                signingConfig signingConfigs.debug
+            }
         }
     }
 
