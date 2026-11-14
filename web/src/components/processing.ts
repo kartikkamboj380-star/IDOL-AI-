@@ -6,27 +6,23 @@ import type { Stage } from '../types.js';
 import { el } from '../lib/dom.js';
 import { icons } from '../lib/icons.js';
 
-const STAGE_ORDER: Stage[] = ['analyzing', 'memory', 'searching', 'ranking', 'context', 'composing', 'validating'];
+const STAGE_ORDER: Stage[] = ['understanding', 'gathering', 'evidence', 'writing', 'verifying'];
 
 const STAGE_LABELS: Record<Stage, string> = {
-  analyzing: 'Analyse',
-  memory: 'Memory',
-  searching: 'Search',
-  ranking: 'Rank',
-  context: 'Context',
-  composing: 'Compose',
-  validating: 'Verify',
+  understanding: 'Understand',
+  gathering: 'Search GitHub',
+  evidence: 'Collect evidence',
+  writing: 'Write answer',
+  verifying: 'Verify citations',
   complete: 'Done',
 };
 
 const STAGE_TITLES: Record<Stage, string> = {
-  analyzing: 'Parsing your question into terms and intent',
-  memory: 'Checking earlier turns for context',
-  searching: 'Scanning the knowledge index',
-  ranking: 'Ranking passages by relevance',
-  context: 'Building a citation-numbered context',
-  composing: 'Composing the grounded answer',
-  validating: 'Verifying every citation',
+  understanding: 'Knowledge engine: turning your question into search terms and intent',
+  gathering: 'Knowledge engine: searching the connected GitHub sources',
+  evidence: 'Knowledge engine: keeping only passages that can support a claim',
+  writing: 'Answer engine: writing from that evidence',
+  verifying: 'Answer engine: checking every citation against a real passage',
   complete: 'Complete',
 };
 
@@ -34,7 +30,7 @@ export class ProcessingIndicator {
   readonly element: HTMLElement;
   private readonly stagesRow: HTMLElement;
   private readonly detail: HTMLElement;
-  private currentStage: Stage = 'analyzing';
+  private currentStage: Stage = 'understanding';
   private readonly detailByStage = new Map<Stage, string>();
   private readonly stageNodes = new Map<Stage, HTMLElement>();
 
@@ -50,7 +46,7 @@ export class ProcessingIndicator {
     }
     this.detail = el('div', { class: 'processing__detail' });
     this.element.append(this.stagesRow, this.detail);
-    this.setStage('analyzing');
+    this.setStage('understanding');
   }
 
   setStage(stage: Stage, detail?: string): void {

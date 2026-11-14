@@ -112,13 +112,11 @@ export interface AnswerPayload {
 }
 
 export type Stage =
-  | 'analyzing'
-  | 'memory'
-  | 'searching'
-  | 'ranking'
-  | 'context'
-  | 'composing'
-  | 'validating'
+  | 'understanding'
+  | 'gathering'
+  | 'evidence'
+  | 'writing'
+  | 'verifying'
   | 'complete';
 
 export type StreamEvent =

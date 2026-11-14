@@ -25,13 +25,11 @@ import { showToast } from './components/toast.js';
 import type { AnswerPayload, ChatMessage, Conversation, SourceRef, Stage, StreamEvent } from './types.js';
 
 const STAGE_LABELS: Record<Stage, string> = {
-  analyzing: 'Analyse',
-  memory: 'Memory',
-  searching: 'Search',
-  ranking: 'Rank',
-  context: 'Context',
-  composing: 'Compose',
-  validating: 'Verify',
+  understanding: 'Understand',
+  gathering: 'Search GitHub',
+  evidence: 'Collect evidence',
+  writing: 'Write answer',
+  verifying: 'Verify citations',
   complete: 'Done',
 };
 
@@ -732,7 +730,7 @@ export class IdolApp {
     this.abortController = new AbortController();
     this.updateSendState();
     this.streamingText = '';
-    let stage: Stage = 'analyzing';
+    let stage: Stage = 'understanding';
     void stage;
     let receivedDelta = false;
 
@@ -745,7 +743,7 @@ export class IdolApp {
           break;
         }
         case 'meta': {
-          this.processingEl?.setStage('context');
+          this.processingEl?.setStage('evidence');
           break;
         }
         case 'sources': {

@@ -48,21 +48,42 @@ npm run verify       # 41 end-to-end checks, PASS/FAIL per step
 
 ## What it actually does
 
-The core is a multi-stage retrieval engine, not a chat wrapper:
+The app is built around **two engines**, and the boundary between them is the
+design. One finds evidence in your GitHub sources; the other writes the answer.
+Neither can do the other's job.
+
+| | **KnowledgeEngine** (`server/engines/knowledge-engine.ts`) | **AnswerEngine** (`server/engines/answer-engine.ts`) |
+| --- | --- | --- |
+| Job | Turn a question into evidence | Turn evidence into an answer |
+| Reads | question, memory, every ready source index | a fixed evidence set — never the index |
+| Steps | understand → expand → search GitHub → keep real evidence | compose → stream → verify citations |
+| Says no | `grounded: false` when nothing supports the question | refuses to write claims it cannot cite |
+| Model needed | no | no (optional for fluent prose) |
+
+The split is what makes the app testable: retrieval is judged on "did the right
+file come back?", writing on "is every claim traceable?", and a weak writer can
+never paper over weak evidence.
+
+Inside the knowledge engine:
 
 | Stage | Module | What it does |
 | --- | --- | --- |
-| 1. Analyze | `server/engines/question-analyzer.ts` | Tokenizes and stems the question, pulls out file paths (`src/app.ts`), identifiers (`num_gaussians`), phrases, and facets; decides whether the question depends on an earlier turn. |
-| 2. Intent | `server/engines/intent.ts` | Classifies into how-to, lookup, code explanation, bug analysis, comparison, summarization, overview, and so on, with bounded confidence and the evidence behind it. |
-| 3. Memory | `server/engines/memory.ts` | Resolves "and how much VRAM does *it* need?" against the conversation, expanding the retrieval query only when the question actually leans on prior turns. |
-| 4. Search | `server/knowledge/retriever.ts` | BM25 over heading-scoped passages, plus a curated vocabulary expansion, document-depth priors, code/data penalties, and a README anchor for descriptive questions. |
-| 5. Context | `server/engines/context-builder.ts` | Selects and numbers snippets within a character budget, de-duplicates across sources, and builds the citation table. |
-| 6. Read | `server/engines/pipeline.ts` | Applies a hard evidence guard: if none of the question's own terms appear in any retrieved passage, there is no answer to give. |
-| 7. Compose | `server/engines/answer-composer.ts` | Extractive answer with a direct lead, real tables, quoted commands, stated caveats, and inline `[n]` citations. |
-| 8. Inspect | `server/engines/code-analysis.ts` | Static observations on retrieved code: hardcoded credentials, `eval`, `TODO`s, non-pinned dependencies. |
-| 9. Validate | `server/engines/validator.ts` | Strips citation markers that point at nothing, verifies quoted text against cited passages, and reports what happened. |
+| Understand | `server/engines/question-analyzer.ts` | Tokenizes and stems the question, pulls out file paths (`src/app.ts`), identifiers (`num_gaussians`), phrases, and facets; decides whether the question depends on an earlier turn. |
+| Intent | `server/engines/intent.ts` | Classifies into how-to, lookup, code explanation, bug analysis, comparison, summarization, overview, and so on, with bounded confidence and the evidence behind it. |
+| Search | `server/knowledge/retriever.ts` | BM25 over heading-scoped passages, plus a curated vocabulary expansion, document-depth priors, and a README anchor for descriptive questions. |
+| Evidence guard | `server/engines/knowledge-engine.ts` | If none of the question's own content terms occur in any retrieved passage, the result is `grounded: false` and the writer gets nothing. |
+| Context | `server/engines/context-builder.ts` | Selects and numbers snippets within a character budget, de-duplicates across sources, and builds the citation table. |
 
-The answer pipeline is the same in both modes; only the generation step differs.
+Inside the answer engine:
+
+| Stage | Module | What it does |
+| --- | --- | --- |
+| Compose | `server/engines/answer-composer.ts` | Extractive answer with a direct lead, real tables, quoted commands, stated caveats, and inline `[n]` citations. Passages far below the best hit are never quoted. |
+| Inspect | `server/engines/code-analysis.ts` | Static observations on retrieved code: hardcoded credentials, `eval`, `TODO`s, non-pinned dependencies. |
+| Validate | `server/engines/validator.ts` | Strips citation markers that point at nothing, verifies quoted text against cited passages, and reports what happened. |
+
+The two engines are wired by `server/engines/pipeline.ts`, which owns only
+sequencing and streaming — no retrieval logic, no composition logic.
 
 ## Two honest modes
 

@@ -263,14 +263,17 @@ export interface ChatRequest {
   sourceIds?: string[];
 }
 
+/**
+ * Streamed progress. The names describe the two engines at work rather than
+ * internal steps: the knowledge engine understands and gathers, the answer
+ * engine writes and verifies.
+ */
 export type Stage =
-  | 'analyzing'
-  | 'memory'
-  | 'searching'
-  | 'ranking'
-  | 'context'
-  | 'composing'
-  | 'validating'
+  | 'understanding'
+  | 'gathering'
+  | 'evidence'
+  | 'writing'
+  | 'verifying'
   | 'complete';
 
 export type StreamEvent =

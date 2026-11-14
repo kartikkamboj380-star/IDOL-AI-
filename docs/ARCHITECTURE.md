@@ -4,33 +4,54 @@ IDOL AI is a single Node process that serves a JSON/SSE API and a compiled
 single-page app. There is no database server, no vector store, and no mandatory
 third-party service. This document explains how a question becomes an answer.
 
-## Process shape
+## Two engines, one brain
+
+The work is split into two engines with a hard boundary between them. The split
+is the design: it makes "did we find the right evidence?" and "did we describe it
+well?" separately testable, and it means a weak writer can never paper over weak
+evidence.
+
+| | **KnowledgeEngine** | **AnswerEngine** |
+| --- | --- | --- |
+| Question it answers | *What in the connected GitHub sources bears on this?* | *What do I write, and where did each claim come from?* |
+| Reads | question, memory, all ready source indexes | a fixed evidence set — never the index |
+| Produces | ranked passages, an evidence verdict, findings | prose, citations, a validation report |
+| Can say no | `grounded: false` when nothing supports the question | refuses when the evidence set is empty |
+| File | `server/engines/knowledge-engine.ts` | `server/engines/answer-engine.ts` |
 
 ```
-                        ┌─────────────────────────────────────────┐
-  browser ── HTTP ─────▶│  Express 5                              │
-                        │   ├── /api/*        JSON + SSE          │
-                        │   └── /*            dist/ + SPA fallback │
-                        └───────────────┬─────────────────────────┘
-                                        │
-                        ┌───────────────▼─────────────────────────┐
-                        │  AnswerPipeline                         │
-                        │   analyze → intent → memory → retrieve   │
-                        │   → context → compose → validate         │
-                        └───────────────┬─────────────────────────┘
-                                        │
-              ┌─────────────────────────┼──────────────────────────┐
-              │                         │                          │
-     ┌────────▼────────┐     ┌──────────▼─────────┐    ┌───────────▼────────┐
-     │ KnowledgeService│     │ Retriever (BM25)   │    │ InferenceAdapter   │
-     │  indexes + cache│     │ ranked passages    │    │ optional provider  │
-     └────────┬────────┘     └────────────────────┘    └────────────────────┘
-              │
-     ┌────────▼─────────┐
-     │ GitHubClient     │  ETag-aware, paginated, rate-limit aware
-     │ Local FS reader  │
-     └──────────────────┘
+                      ┌──────────────────────────────────────────┐
+  browser ── HTTP ───▶│  Express 5                               │
+                      │   ├── /api/*        JSON + SSE           │
+                      │   └── /*            dist/ + SPA fallback │
+                      └────────────────┬─────────────────────────┘
+                                       │
+                      ┌────────────────▼─────────────────────────┐
+                      │  AnswerPipeline — sequencing only        │
+                      │   understanding → gathering → evidence    │
+                      │   → writing → verifying                  │
+                      └───────┬──────────────────────┬───────────┘
+                              │                      │
+              ┌───────────────▼──────────┐   ┌───────▼──────────────┐
+              │ ENGINE 1: KnowledgeEngine│   │ ENGINE 2: AnswerEngine│
+              │  understand → expand     │   │  compose from evidence│
+              │  → search GitHub sources │──▶│  → stream → validate  │
+              │  → keep only real evidence│  │  citations            │
+              └───────────────┬──────────┘   └───────┬──────────────┘
+                              │                      │
+       ┌──────────────────────┼──────────────┐       │
+       │                      │              │       │
+┌──────▼───────────┐ ┌────────▼────────┐ ┌───▼─────┐ ┌▼──────────────────┐
+│ KnowledgeService │ │ Retriever (BM25)│ │ GitHub  │ │ InferenceAdapter  │
+│ indexes + cache  │ │ ranked passages │ │ Client  │ │ optional provider │
+└──────────────────┘ └─────────────────┘ └─────────┘ └───────────────────┘
 ```
+
+The pipeline owns no retrieval or composition logic. It resolves conversation
+memory (which needs the question analysis, so it runs between the knowledge
+engine's `understand()` and `gather()` steps) and forwards stream events. Both
+engines are constructed from plain dependencies, so `tests/engines-split.test.ts`
+drives them directly without a server.
 
 The server is stateless with respect to conversations: history lives in the
 browser's `localStorage` and is sent with each request. That keeps the deployment

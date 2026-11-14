@@ -92,45 +92,6 @@ Grounded generation constrains the model to retrieved passages, but:
 - **Single-node indexing lock.** Two instances pointed at the same data directory are
   not coordinated.
 
-## Cloudflare Workers cannot host this app
-
-This repository has **Cloudflare Workers Builds** connected through the Cloudflare
-dashboard (not through any file in this repository). Three services are attached to
-it — `idol-ai`, `idol-aimm`, and `bold-silence-a166` — and all three builds fail.
-They will keep failing. This is an architecture mismatch, not a build misconfiguration:
-
-| Workers need | This app does |
-| --- | --- |
-| A stateless request handler on an edge runtime | A long-running Node process |
-| No writable filesystem | Writes index caches to `IDOL_DATA_DIR` |
-| No durable in-memory state between requests | Keeps every index in memory between questions |
-| Isolate-level CPU limits (ms per request) | Runs BM25 over thousands of passages per question |
-| `wrangler` config defining an entry module | Ships `dist-server/server/index.js` via `node` |
-
-There is no `wrangler.toml` or Worker entrypoint in this repository, so Workers has
-no module to deploy — hence the failing builds.
-
-**What to do instead:** run it where a Node process is allowed to live:
-
-- **Docker / VPS** — `Dockerfile` + `deploy/docker-compose.yml`
-- **Render** — `deploy/render.yaml` (has a persistent disk for the index)
-- **Railway** — `deploy/railway.json`
-- **Fly.io** — `fly.toml` (mounts a volume for the index)
-
-Or run it locally from the downloadable package (`node start.mjs`).
-
-**To silence the failing check:** in the Cloudflare dashboard go to
-Workers & Pages → select `idol-ai` → Settings → Build → disconnect the Git
-integration. Repeat for the other two services. Nothing in this repository can
-disable those checks, because the integration is configured on Cloudflare's side.
-
-### Could a Cloudflare-hosted version be built?
-
-Yes, but it would be a different program: the index would have to move to
-Vectorize or D1, retrieval into a Worker, and the Express server would be replaced
-by a Worker fetch handler. That is a rewrite, not a deployment setting, and it was
-not part of this work.
-
 ## Not verified in this environment
 
 Stated plainly so the claims in the README are not overread:

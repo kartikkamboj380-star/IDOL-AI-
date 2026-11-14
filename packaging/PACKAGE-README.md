@@ -110,10 +110,9 @@ UI ke **Knowledge sources** dialog se bhi repo add/remove/re-index kar sakte hai
   detect karke report kiya jata hai, "analyzed" ka dawa nahi).
 - Code analysis pattern-based hai — security audit nahi.
 - Conversations browser ke localStorage mein hain. Site data clear kiya to chali gayi.
-- **Ye package Cloudflare Workers par nahi chalega** — ye ek long-running Node
-  process hai jo disk par index rakhta hai aur memory mein cache karta hai. Workers
-  ka edge runtime isse host nahi kar sakta. VPS / Docker / Render / Railway / Fly.io
-  use karein.
+- **Ye ek long-running Node process hai** jo disk par index rakhta hai aur memory
+  mein cache karta hai. Isliye ise VPS / Docker / Render / Railway / Fly.io par
+  chalayein — kisi bhi aise jagah jahan Node process chal sakta ho.
 
 Poori list: `docs/LIMITATIONS.md`
 

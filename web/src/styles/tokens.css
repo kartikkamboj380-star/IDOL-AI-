@@ -7,16 +7,16 @@
 :root {
   color-scheme: dark;
 
-  /* Canvas + surfaces */
-  --bg: #08080a;
-  --bg-elevated: #0d0d10;
-  --surface: #121216;
-  --surface-2: #17171c;
-  --surface-3: #1e1e25;
-  --surface-hover: #202028;
-  --border: #26262f;
-  --border-strong: #34343f;
-  --border-subtle: #1c1c22;
+  /* Canvas + surfaces — warm neutrals rather than blue-black */
+  --bg: #0f0f0e;
+  --bg-elevated: #171715;
+  --surface: #1c1c19;
+  --surface-2: #232320;
+  --surface-3: #2b2b27;
+  --surface-hover: #2a2a26;
+  --border: #33332e;
+  --border-strong: #44443d;
+  --border-subtle: #262622;
 
   /* Text */
   --text: #f2f2f5;
@@ -24,12 +24,12 @@
   --text-tertiary: #74747f;
   --text-inverse: #0a0a0c;
 
-  /* Accent — warm amber, deliberately not Claude's clay */
-  --accent: #f5b544;
-  --accent-bright: #ffc862;
-  --accent-dim: #b8822a;
-  --accent-wash: rgba(245, 181, 68, 0.12);
-  --accent-wash-2: rgba(245, 181, 68, 0.06);
+  /* Accent — muted clay, used sparingly: send button, active row, focus ring */
+  --accent: #d97757;
+  --accent-bright: #e8926f;
+  --accent-dim: #a8583c;
+  --accent-wash: rgba(217, 119, 87, 0.14);
+  --accent-wash-2: rgba(217, 119, 87, 0.07);
 
   /* Semantic */
   --success: #4ade80;
@@ -69,15 +69,15 @@
   --space-12: 3rem;
 
   /* Radius + shadow */
-  --radius-sm: 6px;
-  --radius: 10px;
-  --radius-lg: 14px;
-  --radius-xl: 20px;
+  --radius-sm: 8px;
+  --radius: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 24px;
   --radius-full: 999px;
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
-  --shadow: 0 4px 16px rgba(0, 0, 0, 0.32);
-  --shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.5);
-  --shadow-accent: 0 0 0 1px rgba(245, 181, 68, 0.28), 0 8px 32px rgba(245, 181, 68, 0.08);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.28);
+  --shadow: 0 2px 10px rgba(0, 0, 0, 0.22);
+  --shadow-lg: 0 12px 40px rgba(0, 0, 0, 0.38);
+  --shadow-accent: 0 0 0 1px rgba(217, 119, 87, 0.3), 0 8px 32px rgba(217, 119, 87, 0.1);
 
   /* Layout */
   --sidebar-width: 272px;
@@ -94,24 +94,24 @@
 /* Light theme (preference-aware, same structure) */
 [data-theme='light'] {
   color-scheme: light;
-  --bg: #fbfaf8;
-  --bg-elevated: #ffffff;
+  --bg: #faf9f5;
+  --bg-elevated: #f5f3ee;
   --surface: #ffffff;
-  --surface-2: #f5f4f1;
-  --surface-3: #ecebe7;
-  --surface-hover: #f0efeb;
-  --border: #e2e0da;
-  --border-strong: #cfcdc5;
-  --border-subtle: #edebe6;
-  --text: #1a1a1c;
-  --text-secondary: #5c5c63;
-  --text-tertiary: #8a8a92;
+  --surface-2: #f0eee8;
+  --surface-3: #e8e5dd;
+  --surface-hover: #ebe8e1;
+  --border: #e0dcd2;
+  --border-strong: #cbc6b9;
+  --border-subtle: #eae7df;
+  --text: #1f1e1b;
+  --text-secondary: #5d5a52;
+  --text-tertiary: #918d83;
   --text-inverse: #ffffff;
-  --accent: #b4741a;
-  --accent-bright: #945e12;
-  --accent-dim: #8a5710;
-  --accent-wash: rgba(180, 116, 26, 0.1);
-  --accent-wash-2: rgba(180, 116, 26, 0.05);
+  --accent: #c15f3c;
+  --accent-bright: #a94e2e;
+  --accent-dim: #8f4227;
+  --accent-wash: rgba(193, 95, 60, 0.1);
+  --accent-wash-2: rgba(193, 95, 60, 0.05);
   --success: #15803d;
   --success-wash: rgba(21, 128, 61, 0.1);
   --warning: #b45309;
