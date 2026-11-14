@@ -1,0 +1,15 @@
+node_modules
+dist
+dist-server
+.data
+.git
+.github
+.vite
+coverage
+tests
+*.log
+.env
+.env.*
+docs
+README.md
+assets

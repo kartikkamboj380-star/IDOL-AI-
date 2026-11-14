@@ -1,0 +1,123 @@
+name: Release
+
+# Publishes the ready-to-run app on the Actions tab.
+#
+# Every successful run leaves two downloadable artifacts at the bottom of the run
+# page ("Artifacts" section), and a push to main additionally attaches them to a
+# GitHub Release. Nothing here deploys anything: the output is the same offline
+# package that `npm run package` produces locally, verified before it is uploaded.
+#
+# To download: Actions tab → Release → the newest run → Artifacts → idol-ai-<version>
+# (or the release asset on the Releases page).
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+# Deliberately no cancel-in-progress: a release run kills nothing. When a tag and
+# a branch push arrive together, cancelling mid-run produced a spurious red X on a
+# commit whose checks had passed, which is worse than waiting an extra 30 seconds.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write # needed to publish a Release on main/tags
+
+jobs:
+  package:
+    name: Build and publish the app package
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out the source
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Verify before packaging
+        run: |
+          npm run typecheck
+          npm test
+
+      - name: Build the package
+        run: npm run package
+
+      - name: Read the version
+        id: version
+        run: echo "value=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+
+      - name: Prove the package runs before uploading it
+        run: |
+          set -euo pipefail
+          ARCHIVE="dist-package/idol-ai-${{ steps.version.outputs.value }}.tar.gz"
+          test -f "$ARCHIVE" || { echo "package was not produced"; exit 1; }
+
+          rm -rf /tmp/proof && mkdir -p /tmp/proof
+          tar -xzf "$ARCHIVE" -C /tmp/proof
+          cd "/tmp/proof/idol-ai-${{ steps.version.outputs.value }}"
+
+          # The archive must carry its own dependencies: this job has no network
+          # step after this point, so a missing node_modules would fail here.
+          node scripts/verify.mjs
+
+      - name: Checksums
+        run: |
+          cd dist-package
+          sha256sum *.tar.gz *.zip > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: Upload the package
+        uses: actions/upload-artifact@v4
+        with:
+          name: idol-ai-${{ steps.version.outputs.value }}
+          path: |
+            dist-package/idol-ai-*.tar.gz
+            dist-package/idol-ai-*.zip
+            dist-package/SHA256SUMS.txt
+          retention-days: 90
+          if-no-files-found: error
+
+      - name: Publish a Release (main and tags only)
+        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || format('v{0}', steps.version.outputs.value) }}
+          name: IDOL AI ${{ steps.version.outputs.value }}
+          body: |
+            Ready-to-run package for IDOL AI ${{ steps.version.outputs.value }}.
+
+            Download `idol-ai-${{ steps.version.outputs.value }}.zip`, unpack it, and run:
+
+            ```
+            node start.mjs          # → http://localhost:8787
+            ```
+
+            Needs Node.js 20.11 or newer. No internet connection and no build step
+            are required: the archive already contains the built UI, the compiled
+            server, and its production dependencies.
+
+            Verify the download with `SHA256SUMS.txt`, then run `node scripts/verify.mjs`
+            inside the unpacked folder for ten self-checks.
+
+            What it does: answers questions about an indexed repository and cites the
+            exact file and line range behind every claim. Two engines do the work —
+            one gathers evidence from your sources, one writes the answer from that
+            evidence and refuses when nothing supports the question.
+          files: |
+            dist-package/idol-ai-*.tar.gz
+            dist-package/idol-ai-*.zip
+            dist-package/SHA256SUMS.txt
+          fail_on_unmatched_files: true

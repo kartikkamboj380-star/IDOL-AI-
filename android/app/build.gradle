@@ -1,0 +1,79 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'ai.idol.app'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId 'ai.idol.app'
+        minSdk 24
+        targetSdk 34
+        versionCode 120
+        versionName '1.2.0'
+    }
+
+    // Signing happens here, not in a later shell step. An APK cannot be signed
+    // after the fact by pointing apksigner at the unsigned output — it has to be
+    // signed as the last stage of packaging. A keystore from the environment is
+    // used when present; otherwise the debug key, which installs fine but cannot
+    // be published to Play. See android/signing-note.md.
+    signingConfigs {
+        // Explicit, because `signingConfigs.debug` is only populated once the
+        // debug build type is configured, and the release block below is
+        // evaluated first. The SDK's default debug key path and password.
+        debug {
+            storeFile file(System.getProperty('user.home') + '/.android/debug.keystore')
+            storePassword 'android'
+            keyAlias 'androiddebugkey'
+            keyPassword 'android'
+        }
+        release {
+            def storePath = System.getenv('IDOL_KEYSTORE_PATH')
+            if (storePath != null && file(storePath).exists()) {
+                storeFile file(storePath)
+                storePassword System.getenv('IDOL_KEYSTORE_PASSWORD')
+                keyAlias System.getenv('IDOL_KEY_ALIAS')
+                keyPassword System.getenv('IDOL_KEY_PASSWORD')
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            shrinkResources false
+            // Statement form on purpose: `signingConfig a ? b : c` parses the
+            // condition as the argument, which fails at configure time with a
+            // Boolean-cast-to-SigningConfig ClassCastException.
+            def configured = System.getenv('IDOL_KEYSTORE_PATH')
+            if (configured != null && file(configured).exists()) {
+                signingConfig signingConfigs.release
+            } else {
+                signingConfig signingConfigs.debug
+            }
+        }
+    }
+
+    dependencies {
+        // WebViewAssetLoader. Not a convenience: loading from file:// gives the
+        // page an opaque origin, and opaque origins have no IndexedDB and no
+        // localStorage — the documents a user loads would vanish on every restart.
+        // Serving the same files from https://appassets.androidplatform.net/
+        // gives them a real origin whose storage persists.
+        implementation 'androidx.webkit:webkit:1.11.0'
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    // The web bundle is copied in by `npm run android:sync` before Gradle runs.
+    sourceSets {
+        main {
+            assets.srcDirs += ['src/main/assets']
+        }
+    }
+}

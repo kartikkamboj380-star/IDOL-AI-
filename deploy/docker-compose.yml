@@ -1,0 +1,52 @@
+# Local / single-server deployment.
+#
+#   docker compose -f deploy/docker-compose.yml up -d --build
+#
+# Then open http://localhost:8787. The named volume keeps the index and the
+# encrypted GitHub token across restarts and rebuilds.
+services:
+  idol-ai:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    image: idol-ai:latest
+    container_name: idol-ai
+    restart: unless-stopped
+    ports:
+      - "8787:8787"
+    environment:
+      NODE_ENV: production
+      PORT: "8787"
+      IDOL_DATA_DIR: /app/.data
+      # Index the documentation bundled in the image as a starting corpus.
+      IDOL_LOCAL_DIR: /app/huggingface
+      # Repository indexed on boot (optional; the UI can add more).
+      IDOL_DEFAULT_REPO: ${IDOL_DEFAULT_REPO:-}
+      # Token for private repositories or higher rate limits (optional).
+      GITHUB_TOKEN: ${GITHUB_TOKEN:-}
+      # Optional inference provider; leave empty for knowledge mode.
+      IDOL_INFERENCE_PROVIDER: ${IDOL_INFERENCE_PROVIDER:-}
+      IDOL_INFERENCE_BASE_URL: ${IDOL_INFERENCE_BASE_URL:-}
+      IDOL_INFERENCE_API_KEY: ${IDOL_INFERENCE_API_KEY:-}
+      IDOL_INFERENCE_MODEL: ${IDOL_INFERENCE_MODEL:-}
+    volumes:
+      - idol-data:/app/.data
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:8787/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 40s
+    # The app is a single focused process; cap it so a runaway index cannot
+    # starve the host.
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+
+volumes:
+  idol-data:

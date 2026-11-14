@@ -1,0 +1,202 @@
+name: Android APK
+
+# Builds the installable Android app and attaches the .apk to a Release.
+#
+# This is the download path for the phone: Actions tab → Android APK → newest run
+# → Artifacts, or the Releases page for the newest tag.
+#
+# The APK is a WebView over the offline bundle from `npm run build:device`. No
+# server is involved at build time or at run time; the app declares no INTERNET
+# permission, so it cannot call one even by accident.
+#
+# Runs on pull requests so breakage is caught before a tag, but publishes nothing
+# there: only a push to a v* tag or to main produces a downloadable release.
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'android/**'
+      - 'web/**'
+      - 'server/**'
+      - 'shared/**'
+      - 'package.json'
+      - '.github/workflows/android.yml'
+  push:
+    tags: ['v*']
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build the APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out the source
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: temurin
+
+      - name: Set up the Android SDK
+        uses: android-actions/setup-android@v4
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build the offline web bundle
+        run: npm run build:device
+
+      - name: Assert the bundle needs no server
+        run: |
+          set -euo pipefail
+          MAIN=$(ls dist-device/assets/index-*.js)
+          echo "bundle: $MAIN ($(stat -c%s "$MAIN") bytes)"
+
+          # A regression here would ship an app that cannot answer anything.
+          if grep -q '"/api/' "$MAIN"; then
+            echo "::error::The device bundle still calls the HTTP API."
+            exit 1
+          fi
+          if ! grep -q 'No language model was used' "$MAIN"; then
+            echo "::error::The engines are missing from the device bundle."
+            exit 1
+          fi
+          if grep -q 'from"node:' "$MAIN"; then
+            echo "::error::The bundle references Node built-ins, which a WebView cannot provide."
+            exit 1
+          fi
+          CHUNKS=$(ls dist-device/assets/*.js | wc -l)
+          if [ "$CHUNKS" -ne 1 ]; then
+            echo "::error::Expected one JS bundle, found $CHUNKS."
+            exit 1
+          fi
+
+      - name: Copy the bundle into the Android assets
+        run: npm run android:sync
+
+      - name: Generate the Gradle wrapper
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.7'
+
+      - name: Decode a release keystore, if the repository has one
+        # Optional. Without these secrets the APK is signed with the debug key,
+        # which installs on any phone but cannot be uploaded to Play.
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          if [ -n "${KEYSTORE_BASE64:-}" ]; then
+            echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/idol-release.jks"
+            echo "IDOL_KEYSTORE_PATH=$RUNNER_TEMP/idol-release.jks" >> "$GITHUB_ENV"
+            echo "A release keystore was provided."
+          else
+            echo "No keystore secret; the APK will be debug-signed."
+          fi
+
+      - name: Make sure a debug keystore exists
+        # Gradle signs with it when no release keystore is configured, and the SDK
+        # ships one only after some tool creates it.
+        run: |
+          KEYSTORE="$HOME/.android/debug.keystore"
+          if [ ! -f "$KEYSTORE" ]; then
+            mkdir -p "$HOME/.android"
+            keytool -genkeypair -v -keystore "$KEYSTORE" -storepass android -keypass android \
+              -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10000 \
+              -dname "CN=Android Debug,O=Android,C=US"
+          fi
+          ls -l "$KEYSTORE"
+
+      - name: Assemble the APK
+        id: assemble
+        working-directory: android
+        env:
+          IDOL_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          IDOL_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          IDOL_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        # The failure message becomes a job annotation, which is readable from the
+        # API. Build logs live in storage that is not always reachable, and a red
+        # X with no reason is worse than useless.
+        run: |
+          set +e
+          gradle :app:assembleRelease --no-daemon --stacktrace > "$RUNNER_TEMP/gradle.log" 2>&1
+          STATUS=$?
+          if [ $STATUS -ne 0 ]; then
+            echo "--- gradle output ---"
+            tail -60 "$RUNNER_TEMP/gradle.log"
+            {
+              echo "::error title=Gradle failed::"
+              grep -E "^(FAILURE|\* What went wrong|> |Caused by|e: |error:)" "$RUNNER_TEMP/gradle.log" | head -25 | sed 's/%/%25/g; s/\r//g'
+            } >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || true
+            echo "::error::$(grep -E '^(\* What went wrong|> |Caused by)' "$RUNNER_TEMP/gradle.log" | head -8 | tr '\n' ' ' | cut -c1-900)"
+            exit $STATUS
+          fi
+          tail -15 "$RUNNER_TEMP/gradle.log"
+
+      - name: Name and inspect the APK
+        id: apk
+        run: |
+          set -euo pipefail
+          VERSION=$(node -p "require('./package.json').version")
+          # Gradle is configured to always sign, so exactly one APK is expected.
+          FOUND=$(find android/app/build/outputs/apk -name '*.apk' | head -1)
+          if [ -z "$FOUND" ]; then
+            echo "::error::Gradle produced no APK."
+            exit 1
+          fi
+          APK="idol-ai-${VERSION}.apk"
+          cp "$FOUND" "$APK"
+          echo "file=$APK" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          ls -lh "$APK"
+          # Record what is inside so the download is checkable without installing.
+          "$ANDROID_HOME/build-tools/34.0.0/aapt" dump badging "$APK" | head -5 || true
+
+      - name: Verify the APK is signed and installable
+        run: |
+          set -euo pipefail
+          APK="${{ steps.apk.outputs.file }}"
+          BUILD_TOOLS=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+          "$BUILD_TOOLS/apksigner" verify --print-certs "$APK"
+          # A bad signature here would produce a download that Android refuses.
+          "$BUILD_TOOLS/aapt" dump badging "$APK" | grep -E "package:|sdkVersion|targetSdkVersion"
+
+      - name: Checksum
+        run: sha256sum "${{ steps.apk.outputs.file }}" > SHA256SUMS.txt && cat SHA256SUMS.txt
+
+      - name: Upload the APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: idol-ai-apk-${{ steps.apk.outputs.version }}
+          path: |
+            ${{ steps.apk.outputs.file }}
+            SHA256SUMS.txt
+          retention-days: 90
+          if-no-files-found: error
+
+      - name: Attach the APK to the Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            ${{ steps.apk.outputs.file }}
+            SHA256SUMS.txt
+          fail_on_unmatched_files: true
