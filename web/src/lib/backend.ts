@@ -22,8 +22,6 @@ import { LocalApi, type ApiSurface } from './local-api.js';
 
 export type { ApiSurface };
 
-declare const __IDOL_DEVICE__: boolean | undefined;
-
 /** True when this bundle is the offline device build. */
 export const IS_DEVICE_BUILD = typeof __IDOL_DEVICE__ !== 'undefined' && __IDOL_DEVICE__ === true;
 

@@ -8,8 +8,6 @@
  * disappear with it — which is why the APK carries no fetch code at all.
  */
 
-declare const __IDOL_DEVICE__: boolean | undefined;
-
 export async function openServerSources(options: { onSourcesChanged: () => void }): Promise<void> {
   if (__IDOL_DEVICE__) {
     throw new Error('The offline build loads files from the device, not from a repository.');
