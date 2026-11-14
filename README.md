@@ -23,6 +23,38 @@ required.
 
 ---
 
+## Android app — install the APK
+
+**[Download idol-ai-1.2.0.apk](https://github.com/kartikkamboj380-star/IDOL-AI-/releases/download/v1.2.0/idol-ai-1.2.0.apk)** (471 kB)
+
+Open it on the phone, allow "install unknown apps" for whatever app opened it, and
+install. No Play Store, no account, no setup.
+
+This build is the whole assistant inside the phone. There is no server, no
+localhost, and no network: the app declares **no INTERNET permission**, so the
+operating system would refuse a connection even if the code asked for one. Ask a
+question in aeroplane mode and it answers, because the engines that index
+documents and compose cited answers run in the page.
+
+First run has a sample corpus already loaded so the app is not an empty box. Tap
+**Sources** to add your own: a folder of Markdown or code, a handful of files, or
+that sample again. Documents are read on the phone, indexed on the phone, and
+stored in the phone's WebView storage. Nothing is uploaded, because there is
+nowhere to upload it to.
+
+Two caveats, stated plainly because they matter:
+
+- **Debug-signed.** It installs and runs, but Play Store would reject it, and a
+  later build signed with a different key cannot update it in place — uninstall
+  first. See [android/signing-note.md](android/signing-note.md) for how to sign
+  your own.
+- **Not tested on a physical device by this repo's automation.** CI compiles,
+  signs, and verifies the APK on every push, but a human has not held it. If it
+  misbehaves on your phone, that is the first real report, not a verified path.
+
+Build it yourself with `npm run android:apk`, or let CI do it: the **Android APK**
+workflow runs on every push and attaches the APK to any `v*` tag.
+
 ## Download the app (no build step)
 
 You do not need to clone or build anything to run this. Every successful
