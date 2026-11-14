@@ -92,6 +92,19 @@ Grounded generation constrains the model to retrieved passages, but:
 - **Single-node indexing lock.** Two instances pointed at the same data directory are
   not coordinated.
 
+## Cloudflare Workers cannot host this app
+
+This repository has a Cloudflare **Workers Builds** integration enabled in the
+Cloudflare dashboard (not in any file in this repository). Its check fails, and it
+will keep failing: IDOL AI is a long-lived Node.js process that uses the filesystem
+for the knowledge index and keeps indexes in memory between requests. Workers run in
+an edge runtime with no persistent process, so the backend cannot execute there.
+
+If you want this app online, use a container host instead — the manifests in
+`deploy/` cover Render, Railway, Fly.io, and plain Docker Compose. To silence the
+failing check, disconnect the Workers Builds integration in the Cloudflare dashboard
+(Workers & Pages → the `idol-ai` service → Settings → Build).
+
 ## Not verified in this environment
 
 Stated plainly so the claims in the README are not overread:
