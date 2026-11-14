@@ -32,6 +32,7 @@ import { composeKnowledgeAnswer, computeCoverage } from './answer-composer.js';
 import { aggregateFindings, analyzePassage } from './code-analysis.js';
 import { validateAnswer } from './validator.js';
 import { newId } from '../util/common.js';
+import { contentTerms } from '../knowledge/text.js';
 import { InferenceError } from '../inference/provider.js';
 
 export interface PipelineInput {
@@ -121,6 +122,7 @@ export class AnswerPipeline {
       memoryTerms: memoryState.expanded ? memory.focusTerms : [],
       expansionTerms: expansion.terms,
       pathTargets,
+      intent: intent.intent,
     });
     mark('search', t);
 
@@ -128,11 +130,28 @@ export class AnswerPipeline {
     t = Date.now();
     input.emit({ type: 'stage', stage: 'ranking', detail: `${retrieval.hits.length} candidate passages` });
 
+    const conversational = intent.intent === 'greeting' || intent.intent === 'capabilities';
     const topScore = retrieval.hits[0]?.score ?? 0;
     // Relevance gate: a hit must clear a floor and stay within reach of the best
-    // hit, otherwise it is noise and must not appear as a source.
-    const floor = intent.intent === 'greeting' || intent.intent === 'capabilities' ? 0 : Math.max(0.9, topScore * 0.18);
+    // hit, otherwise it is noise and must not appear as a source. Conversational
+    // intents ("hi", "what can you do") are answered from the app's own
+    // capabilities, so they cite nothing at all.
+    const floor = conversational ? Number.POSITIVE_INFINITY : Math.max(0.9, topScore * 0.18);
     const relevantHits = retrieval.hits.filter((hit) => hit.score >= floor);
+
+    // Hard evidence guard: the retriever's lexical matching can score "the",
+    // the numbers in a query, or query-expansion terms, none of which is proof
+    // that the corpus covers the question. If none of the question's own content
+    // terms occur in any retrieved passage, there is no evidence, and the answer
+    // must say so instead of quoting something unrelated.
+    const questionTerms = new Set([...analysis.terms, ...contentTerms(input.question).terms]);
+    const lexicalEvidence = relevantHits.some((hit) => {
+      const haystack = `${hit.path} ${hit.passage.heading ?? ''} ${hit.passage.text}`.toLowerCase();
+      return [...questionTerms].some((term) => term.length > 2 && haystack.includes(term));
+    });
+    if (!lexicalEvidence && !conversational) {
+      relevantHits.length = 0;
+    }
 
     input.emit({ type: 'stage', stage: 'context' });
     const context = buildContext({

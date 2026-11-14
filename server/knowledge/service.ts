@@ -107,7 +107,11 @@ export class KnowledgeService {
     private readonly store: JsonStore,
     private readonly github: GitHubClient,
   ) {
-    this.includeAppSources = config.nodeEnv === 'test' || process.env.IDOL_INDEX_APP_SOURCES === '1';
+    // App sources (server/, web/, tests/, …) are excluded from the knowledge base by
+    // default: indexing our own code makes the app answer questions about itself
+    // and pollutes retrieval. Tests index them explicitly via the env flag so the
+    // knowledge-mode path is exercised against real code; production never does.
+    this.includeAppSources = process.env.IDOL_INDEX_APP_SOURCES === '1';
   }
 
   /* ------------------------------------------------------------------ */

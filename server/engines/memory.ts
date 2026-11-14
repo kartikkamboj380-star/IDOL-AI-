@@ -52,7 +52,9 @@ export function buildMemory(input: MemoryInput): MemoryResult {
   const overlap = focusTerms.filter((term) => currentTerms.has(term)).length;
   const refers = REFERRING.test(input.current.raw);
   const tooVague = input.current.terms.length <= 2;
-  const shouldExpand = tooVague || (refers && overlap < 2);
+  // Expand when the question leans on earlier context: either it is too short to
+  // stand alone, or it refers back ("it", "that") without repeating the topic.
+  const shouldExpand = tooVague || (refers && overlap < 2) || input.current.isFollowUp;
 
   if (!shouldExpand) {
     return {

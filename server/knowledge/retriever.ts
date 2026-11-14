@@ -28,6 +28,8 @@ export interface RetrievalOptions {
   preferCode?: boolean;
   /** Restrict to files whose name/path matches one of these tokens. */
   pathTargets?: string[];
+  /** Detected intent, used to seed overview anchors for descriptive questions. */
+  intent?: string;
 }
 
 export interface RetrievalDiagnostics {
@@ -105,6 +107,34 @@ export class Retriever {
     const perSource: Record<string, { passages: number; hits: number }> = {};
     const idf: Record<string, number> = {};
     const matchedTerms = new Set<string>();
+
+    // Overview-style questions ("what is this project?", "summarise the repo")
+    // are answered by a README's opening description, whose words rarely match
+    // the question. For those intents, seed each README's opening passage as an
+    // anchor hit so the composer always has the descriptive evidence available.
+    const seedAnchors =
+      options.intent === 'repo_overview' ||
+      options.intent === 'summarization' ||
+      /\b(about|overview|summary|summarize|summarise|purpose|what is this|what does (this|it)\b)/i.test(query);
+    if (seedAnchors) {
+      for (const source of sources) {
+        const readme = source.index.files
+          .filter((file) => /(^|\/)readme\.md$/i.test(file.path) && file.passageIds.length > 0)
+          .sort((a, b) => pathDepth(a.path) - pathDepth(b.path))[0];
+        if (!readme) continue;
+        const opening = readme.passageIds
+          .map((id) => source.index.passages.find((passage) => passage.id === id))
+          .find((passage) => passage && passage.kind === 'markdown');
+        if (!opening) continue;
+        scored.push({
+          passage: opening,
+          score: 12.5,
+          signals: { anchor: 1 },
+          source,
+        });
+        matchedTerms.add('readme-anchor');
+      }
+    }
 
     for (const source of sources) {
       const index = source.index;

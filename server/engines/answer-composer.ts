@@ -111,9 +111,42 @@ export function composeKnowledgeAnswer(input: ComposeInput): ComposeResult {
 /* ------------------------------------------------------------------ */
 
 /** One or two clean, quoted sentences that directly address the question. */
+/**
+ * Picks the passage that should open the answer.
+ *
+ * Ranking order is a guide, not the answer: a passage can score highest because
+ * its *table* repeats the query word while its prose talks about something else
+ * (asking "how much VRAM" surfaces a GPU table whose lead sentence is about
+ * request time). So the opening passage must have the question's own vocabulary
+ * in its prose. When no passage does, the highest-ranked one is still used —
+ * and the answer says what it actually found.
+ */
+function chooseLeadSnippet(ranked: ContextSnippet[], analysis: QuestionAnalysis): ContextSnippet | null {
+  if (ranked.length === 0) return null;
+  // A descriptive question ("what is this project?") is answered by descriptive
+  // prose, even if another passage shares more keywords with the question.
+  const descriptive = ranked.filter((snippet) => isDescriptionPassage(snippet.text));
+  if (descriptive.length > 0 && /\b(what is (this|it|the (repo|repository|project))|about|overview|summary|summar(y|ise|ize)|purpose)\b/i.test(analysis.raw)) {
+    return descriptive[0] ?? ranked[0] ?? null;
+  }
+  const terms = analysis.terms.filter((term) => term.length > 2);
+  if (terms.length === 0) return ranked[0] ?? null;
+  for (const snippet of ranked.slice(0, 4)) {
+    const lines = snippet.text.split('\n').filter((line) => line.trim().length > 0);
+    const proseLines = lines.filter((line) => !line.trim().startsWith('|'));
+    // A table-dominant passage has no prose of its own to quote — its caption
+    // belongs to the table section, not the opening sentence.
+    if (lines.length > 0 && proseLines.length / lines.length < 0.34) continue;
+    const prose = normalizeText(proseLines.join(' '));
+    const overlap = terms.filter((term) => prose.includes(term)).length;
+    if (overlap > 0) return snippet;
+  }
+  return ranked[0] ?? null;
+}
+
 function leadSection(input: ComposeInput): string {
   const ranked = proseSnippets(input);
-  const top = ranked[0] ?? (input.context.snippets[0] as ContextSnippet);
+  const top = chooseLeadSnippet(ranked, input.analysis) ?? (input.context.snippets[0] as ContextSnippet);
   const isCode = top.kind === 'code';
   const sentences = isCode ? [] : pickBestSentences(top.text, input.analysis, 2);
   const location = `${top.path}${top.heading ? ` › ${top.heading}` : ''}`;
@@ -300,10 +333,19 @@ function documentationSections(input: ComposeInput): string[] {
 }
 
 function overviewSections(input: ComposeInput): string[] {
-  const ranked = proseSnippets(input);
+  // "What is this?" is answered by descriptive prose. Put description-like
+  // passages first so the body of the answer is about the product, not about
+  // installation mechanics that happen to share the question's vocabulary.
+  const ranked = proseSnippets(input)
+    .slice()
+    .sort((a, b) => Number(isDescriptionPassage(b.text)) - Number(isDescriptionPassage(a.text)));
+  const lead = chooseLeadSnippet(proseSnippets(input), input.analysis);
+  const leadText = lead ? normalizeText(pickBestSentences(lead.text, input.analysis, 2).join(' ')) : '';
   const paragraphs: string[] = [];
   for (const snippet of ranked.slice(0, 3)) {
-    const sentences = pickBestSentences(snippet.text, input.analysis, 2);
+    const sentences = pickBestSentences(snippet.text, input.analysis, 2).filter(
+      (sentence) => !(leadText.length > 0 && leadText.includes(normalizeText(sentence))),
+    );
     if (sentences.length === 0) continue;
     paragraphs.push(`${sentences.join(' ')} [${snippet.id}]`);
   }
@@ -320,6 +362,11 @@ function overviewSections(input: ComposeInput): string[] {
 }
 
 function detailSections(input: ComposeInput): string[] {
+  const leadText = normalizeText(pickBestSentences(
+    (chooseLeadSnippet(proseSnippets(input), input.analysis) ?? input.context.snippets[0] as ContextSnippet).text,
+    input.analysis,
+    2,
+  ).join(' '));
   const bullets: string[] = [];
   const seen = new Set<string>();
   // Put description-like passages first: a summary should open with what the
@@ -331,6 +378,8 @@ function detailSections(input: ComposeInput): string[] {
     for (const sentence of pickBestSentences(snippet.text, input.analysis, 2)) {
       const key = sentence.toLowerCase().slice(0, 40);
       if (seen.has(key)) continue;
+      // Never restate the opening sentence as a bullet.
+      if (leadText.length > 0 && leadText.includes(normalizeText(sentence))) continue;
       seen.add(key);
       bullets.push(`- ${sentence} [${snippet.id}]`);
       if (bullets.length >= 4) break;
@@ -439,13 +488,19 @@ function noEvidenceAnswer(input: ComposeInput): string {
 function rankSnippetsForQuestion(input: ComposeInput): ContextSnippet[] {
   const terms = input.analysis.terms.filter((term) => term.length > 2);
   const codeIntent = input.intent.intent === 'code_explanation' || input.intent.intent === 'bug_analysis';
+  // "What is this project?" questions are answered by a README's opening
+  // description, which rarely repeats the question's words — so give the
+  // document opening an explicit prior for overview/summary intents.
+  const overviewIntent = input.intent.intent === 'repo_overview' || input.intent.intent === 'summarization';
   return [...input.context.snippets]
     .filter((snippet) => !/^front matter$/i.test(snippet.heading ?? ''))
     .map((snippet) => {
       const haystack = normalizeText(`${snippet.heading ?? ''} ${snippet.text}`);
       const overlap = terms.filter((term) => haystack.includes(term)).length;
       const kindBonus = snippet.kind === 'code' ? (codeIntent ? 2 : -14) : snippet.kind === 'markdown' ? 6 : 0;
-      return { snippet, rank: overlap * 10 + snippet.score / 10 + kindBonus };
+      const isOpening = /(^|\/)readme\.md$/i.test(snippet.path) && snippet.startLine <= 40;
+      const openingBonus = overviewIntent && isOpening ? 22 : 0;
+      return { snippet, rank: overlap * 10 + snippet.score / 10 + kindBonus + openingBonus };
     })
     .sort((a, b) => b.rank - a.rank)
     .map((entry) => entry.snippet);
@@ -461,9 +516,24 @@ function proseSnippets(input: ComposeInput): ContextSnippet[] {
   );
 }
 
+
+/** True when a line is basically a path, slug, model id, or config token. */
+function looksLikeIdentifier(text: string): boolean {
+  const trimmed = text.trim();
+  if (/^[\w.-]+\/[\w.-]+$/.test(trimmed)) return true;               // owner/repo, org/model
+  if (/^[\w.-]+(__[\w.-]+)+$/.test(trimmed)) return true;            // some__python__package
+  if (/^[\x60'"`][^\s]+[\x60'"`]$/.test(trimmed)) return true;        // fully quoted token
+  const words = trimmed.split(/\s+/);
+  const spaceless = words.filter((word) => !/[\s]/.test(word) && /[/_.:]/.test(word)).length;
+  return words.length <= 3 && spaceless >= 1;
+}
+
 /** Heuristic: too much JSON/punctuation density means it is not prose. */
 function looksLikeData(text: string): boolean {
-  const trimmed = text.trim();
+  // Markdown files legitimately carry HTML in hero sections (<p align="center">,
+  // <h1>, <img>). Strip tags before measuring punctuation density, or a perfectly
+  // good product description is misread as a config blob.
+  const trimmed = text.replace(/<[^>]{1,400}>/g, ' ').trim();
   if (/^[{[]/.test(trimmed)) return true;
   const tableRows = trimmed.split('\n').filter((line) => line.trim().startsWith('|')).length;
   const nonEmpty = trimmed.split('\n').filter((line) => line.trim().length > 0).length;
@@ -477,6 +547,9 @@ function pickBestSentences(text: string, analysis: QuestionAnalysis, count: numb
   const sentences = toSentences(text);
   if (sentences.length === 0) return [];
   const terms = analysis.terms.filter((term) => term.length > 2);
+  const quantitative = /\b(how (much|many|long|fast|big)|cost|price|size|count|number of|how large)\b/i.test(
+    analysis.raw,
+  );
   const scored = sentences.map((sentence, index) => {
     const normalized = normalizeText(sentence);
     let score = 0;
@@ -485,6 +558,18 @@ function pickBestSentences(text: string, analysis: QuestionAnalysis, count: numb
     score += Math.max(0, 0.5 - index * 0.06);
     if (sentence.length > 420) score -= 0.5;
     if (/https?:\/\//.test(sentence)) score -= 0.3;
+    // Table/figure captions are legend text, not an answer: "Bold is the best in
+    // each column", "Numbers are medians", asterisk footnotes. They must never
+    // become the opening sentence.
+    if (/^(bold|italic|numbers?|values?|figures?|\*|†|‡|results? are|all (numbers|values|times))/i.test(sentence)) score -= 2.5;
+    if (/\b(each column|each row|highest .+ despite|medians? over|average of \d+ (runs|images))\b/i.test(sentence)) score -= 1.5;
+    if (sentence.length < 25) score -= 0.6;
+    // "How much VRAM / how many steps / at what cost" — a sentence without a
+    // number cannot be the answer to a quantitative question.
+    if (quantitative) {
+      if (/[\d]/.test(sentence)) score += 0.9;
+      else score -= 1.2;
+    }
     return { sentence, score, index };
   });
   return scored
@@ -500,6 +585,10 @@ function collectBullets(input: ComposeInput, limit: number): Array<{ text: strin
   const terms = input.analysis.terms.filter((term) => term.length > 2);
   for (const snippet of proseSnippets(input)) {
     for (const bullet of extractBullets(snippet.text)) {
+      // A bullet that is really an identifier or a checklist marker ("- [ ]
+      // facebook/dinov3-…") is not a highlight a reader can use.
+      if (looksLikeIdentifier(bullet) || /^\[.\]/.test(bullet)) continue;
+      if (bullet.split(' ').length < 4) continue;
       const normalized = normalizeText(bullet);
       const overlap = terms.filter((term) => normalized.includes(term)).length;
       if (overlap === 0 && out.length >= 2) continue;

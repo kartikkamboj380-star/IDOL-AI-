@@ -214,63 +214,59 @@ export interface TextSegment {
 export function parseMarkdownSegments(text: string): TextSegment[] {
   const lines = text.split('\n');
   const segments: TextSegment[] = [];
-  let heading: string | null = null;
-  let headingLevel = 0;
-  let buffer: string[] = [];
-  let start = 1;
-  let inFence = false;
-  let frontMatterEnd = 0;
 
+  // Skip YAML front matter: it is site metadata, never an answer.
+  let start = 0;
   if (lines[0]?.trim() === '---') {
     const end = lines.findIndex((line, index) => index > 0 && line.trim() === '---');
-    // YAML front matter is metadata for the site, not documentation, and it is
-    // never useful as an answer. Skip it (keep line numbers intact).
-    if (end > 0 && end < 40) frontMatterEnd = end + 1;
+    if (end > 0 && end < 40) start = end + 1;
   }
 
-  const flush = (endLine: number): void => {
-    // Trim blank lines at both ends but keep the original line numbering.
-    let first = 0;
-    while (first < buffer.length && (buffer[first] ?? '').trim() === '') first += 1;
-    let last = buffer.length - 1;
-    while (last >= first && (buffer[last] ?? '').trim() === '') last -= 1;
-    if (last >= first) {
-      const body = buffer.slice(first, last + 1).join('\n');
-      if (body.trim().length > 0) {
-        segments.push({
-          heading,
-          startLine: start + first,
-          endLine: start + last,
-          text: body,
-          level: headingLevel,
-        });
-      }
-    }
-    buffer = [];
-  };
+  interface Section {
+    heading: string | null;
+    level: number;
+    startLine: number;
+    lines: string[];
+  }
 
-  for (let index = frontMatterEnd; index < lines.length; index += 1) {
+  const sections: Section[] = [];
+  let current: Section = { heading: null, level: 0, startLine: start + 1, lines: [] };
+  let inFence = false;
+
+  for (let index = start; index < lines.length; index += 1) {
     const line = lines[index] as string;
-    const fence = /^\s*(```|~~~)/.test(line);
-    if (fence) inFence = !inFence;
+    if (/^\s*(```|~~~)/.test(line)) inFence = !inFence;
     const headingMatch = !inFence ? /^(#{1,6})\s+(.*\S)\s*$/.exec(line) : null;
     if (headingMatch) {
-      flush(index);
+      // Flush the previous section before starting a new one.
+      sections.push(current);
       const level = (headingMatch[1] ?? '#').length;
       const title = (headingMatch[2] ?? '').replace(/#+\s*$/, '').trim();
-      heading = title;
-      headingLevel = level;
-      start = index + 1;
-      buffer = [line];
-      // The heading line itself is included so citations show it verbatim.
-      flush(index + 1);
-      start = index + 2;
+      current = { heading: title, level, startLine: index + 1, lines: [line] };
       continue;
     }
-    if (buffer.length === 0) start = index + 1;
-    buffer.push(line);
+    current.lines.push(line);
   }
-  flush(lines.length);
+  sections.push(current);
+
+  for (const section of sections) {
+    // Trim blank lines at both ends while preserving absolute line numbers.
+    let first = 0;
+    while (first < section.lines.length && (section.lines[first] ?? '').trim() === '') first += 1;
+    let last = section.lines.length - 1;
+    while (last >= first && (section.lines[last] ?? '').trim() === '') last -= 1;
+    if (last < first) continue;
+    const body = section.lines.slice(first, last + 1).join('\n');
+    if (body.trim().length === 0) continue;
+    segments.push({
+      heading: section.heading,
+      startLine: section.startLine + first,
+      endLine: section.startLine + last,
+      text: body,
+      level: section.level,
+    });
+  }
+
   return segments;
 }
 
@@ -320,15 +316,20 @@ export function parseNotebook(text: string, path: string): string | null {
 }
 
 export function parseFile(path: string, content: string | Buffer, maxBytes = MAX_TEXT_BYTES): ParseResult {
-  const family = fileFamily(path);
-  if (family === 'unsupported') {
-    return { ok: false, reason: 'unsupported_type', detail: `Unsupported file type for ${path}` };
-  }
   const buffer = typeof content === 'string' ? Buffer.from(content, 'utf8') : content;
   if (buffer.length === 0) return { ok: false, reason: 'empty', detail: `${path} is empty` };
+
+  // LFS pointers and binary payloads are checked first: a model weight file has
+  // an "unsupported" extension, but the honest reason is that only a pointer
+  // (or binary blob) was retrieved — the UI must say so rather than imply the
+  // model itself was read.
   const headText = buffer.subarray(0, Math.min(buffer.length, 1024)).toString('utf8');
   if (looksLikeLfsPointer(headText)) {
     return { ok: false, reason: 'lfs_pointer', detail: `${path} is a Git LFS pointer, not readable text` };
+  }
+  const family = fileFamily(path);
+  if (family === 'unsupported') {
+    return { ok: false, reason: 'unsupported_type', detail: `Unsupported file type for ${path}` };
   }
   if (isProbablyBinary(buffer)) {
     return { ok: false, reason: 'binary', detail: `${path} contains binary data` };

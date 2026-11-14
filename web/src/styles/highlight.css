@@ -1,0 +1,128 @@
+/* ==========================================================================
+   Syntax highlighting — tuned to the IDOL AI palette (amber on near-black)
+   Only the token classes we register in highlight.ts are styled here.
+   ========================================================================== */
+
+.hljs {
+  color: #d8d8e0;
+  background: transparent;
+}
+
+[data-theme='light'] .hljs {
+  color: #24242a;
+}
+
+.hljs-comment,
+.hljs-quote {
+  color: #6b6b78;
+  font-style: italic;
+}
+
+.hljs-keyword,
+.hljs-selector-tag,
+.hljs-literal,
+.hljs-doctag,
+.hljs-meta .hljs-keyword {
+  color: #c792ea;
+}
+
+.hljs-string,
+.hljs-regexp,
+.hljs-addition,
+.hljs-attribute,
+.hljs-meta .hljs-string {
+  color: #a5d6a7;
+}
+
+.hljs-number,
+.hljs-symbol,
+.hljs-bullet,
+.hljs-variable,
+.hljs-template-variable,
+.hljs-link,
+.hljs-selector-attr,
+.hljs-selector-pseudo {
+  color: #f5b544;
+}
+
+.hljs-title,
+.hljs-section,
+.hljs-title.function_,
+.hljs-name,
+.hljs-selector-id,
+.hljs-selector-class {
+  color: #82aaff;
+}
+
+.hljs-type,
+.hljs-title.class_,
+.hljs-built_in,
+.hljs-class .hljs-title {
+  color: #ffcb6b;
+}
+
+.hljs-attr,
+.hljs-property,
+.hljs-params {
+  color: #89ddff;
+}
+
+.hljs-meta,
+.hljs-deletion {
+  color: #f07178;
+}
+
+.hljs-tag {
+  color: #9d9daa;
+}
+
+.hljs-emphasis {
+  font-style: italic;
+}
+
+.hljs-strong {
+  font-weight: 700;
+}
+
+[data-theme='light'] .hljs-comment,
+[data-theme='light'] .hljs-quote {
+  color: #7a7a85;
+}
+
+[data-theme='light'] .hljs-keyword,
+[data-theme='light'] .hljs-selector-tag,
+[data-theme='light'] .hljs-literal {
+  color: #7c3aed;
+}
+
+[data-theme='light'] .hljs-string,
+[data-theme='light'] .hljs-regexp,
+[data-theme='light'] .hljs-addition {
+  color: #15803d;
+}
+
+[data-theme='light'] .hljs-number,
+[data-theme='light'] .hljs-symbol,
+[data-theme='light'] .hljs-variable {
+  color: #b45309;
+}
+
+[data-theme='light'] .hljs-title,
+[data-theme='light'] .hljs-section,
+[data-theme='light'] .hljs-name {
+  color: #1d4ed8;
+}
+
+[data-theme='light'] .hljs-type,
+[data-theme='light'] .hljs-built_in {
+  color: #a16207;
+}
+
+[data-theme='light'] .hljs-attr,
+[data-theme='light'] .hljs-property {
+  color: #0e7490;
+}
+
+[data-theme='light'] .hljs-meta {
+  color: #b91c1c;
+}

@@ -76,6 +76,7 @@ export interface FileResponse {
   sourceId: string;
   path: string;
   language: string;
+  lineCount: number;
   kind: string;
   size: number;
   content: string;

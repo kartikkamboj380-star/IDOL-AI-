@@ -1,6 +1,6 @@
 /** Security headers, body validation helpers, and input sanitisation. */
 import type { NextFunction, Request, Response } from 'express';
-import { ValidationError } from '../util/errors.js';
+import { PayloadTooLargeError, ValidationError } from '../util/errors.js';
 
 /**
  * Strict CSP for the SPA. The UI ships no third-party scripts; code
@@ -24,7 +24,7 @@ export function securityHeaders(isDev: boolean) {
       "object-src 'none'",
       "base-uri 'self'",
       "form-action 'self'",
-      "frame-ancestors 'self'",
+      "frame-ancestors 'none'",
     ].join('; ');
     res.setHeader('Content-Security-Policy', csp);
     if (req.path.startsWith('/api/')) {
@@ -59,7 +59,9 @@ export function readString(
     throw new ValidationError(`Field "${key}" must be at least ${options.minLength} characters.`);
   }
   if (options.maxLength !== undefined && value.length > options.maxLength) {
-    throw new ValidationError(`Field "${key}" must be at most ${options.maxLength} characters.`);
+    throw new PayloadTooLargeError(
+      `Field "${key}" is ${value.length} characters, over the ${options.maxLength}-character limit.`,
+    );
   }
   return value;
 }

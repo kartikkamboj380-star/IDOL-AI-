@@ -59,6 +59,8 @@ export function analyzeQuestion(raw: string, options: AnalyzeOptions = {}): Ques
     language: /[a-z]/i.test(trimmed) ? 'en' : 'unknown',
   };
 
+  // Overlap must be measured against the question's *own* terms, before memory
+  // expansion merges earlier vocabulary into `terms`.
   analysis.isFollowUp = detectFollowUp(trimmed, unique, options.priorTerms ?? []);
   if (analysis.isFollowUp && (options.priorTerms?.length ?? 0) > 0) {
     const prior = options.priorTerms ?? [];
@@ -71,12 +73,14 @@ export function analyzeQuestion(raw: string, options: AnalyzeOptions = {}): Ques
 
 function detectFollowUp(raw: string, terms: string[], priorTerms: string[]): boolean {
   if (priorTerms.length === 0) return false;
-  if (terms.length <= 2) return true;
   if (FOLLOW_UP_PATTERNS.some((pattern) => pattern.test(raw))) return true;
-  // Very short messages that share no vocabulary with the previous question are
-  // still treated as follow-ups when they contain a referring pronoun.
   const overlap = terms.filter((term) => priorTerms.includes(term)).length;
-  return overlap === 0 && /\b(it|that|this|they|those|these)\b/i.test(raw) && terms.length <= 6;
+  // A question that repeats the conversation's own vocabulary is self-contained,
+  // no matter how short it is ("benchmark results?" in a benchmark conversation).
+  if (overlap >= 1) return false;
+  if (terms.length === 0) return true;
+  // Otherwise it must actually refer backwards to depend on the earlier turn.
+  return /\b(it|its|that|this|they|them|those|these)\b/i.test(raw);
 }
 
 export function extractPaths(text: string): string[] {
@@ -133,8 +137,11 @@ export function detectFacets(normalized: string): string[] {
 }
 
 export function isGreeting(normalized: string): boolean {
-  return /^(hi|hello|hey|yo|hiya|good (morning|afternoon|evening)|namaste|greetings)\b[\s!.?]*$/i.test(normalized) ||
-    /^(hi|hello|hey)\b[\s,!.]{0,4}$/i.test(normalized);
+  const trimmed = normalized.trim().replace(/[!.?,]+$/g, '');
+  // Allow a short friendly tail ("hi there", "hello again", "hey idol").
+  return /^(hi|hello|hey|yo|hiya|howdy|good (morning|afternoon|evening)|namaste|greetings)(\s+(there|again|idol|ai|friend|team)){0,2}$/i.test(
+    trimmed,
+  );
 }
 
 export function isCapabilityQuestion(normalized: string): boolean {

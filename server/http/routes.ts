@@ -176,6 +176,7 @@ export function createApiRouter(deps: RouteDeps): Router {
       sourceId: req.params.id,
       path: filePath,
       language: file.language,
+      lineCount: file.content.split('\n').length,
       kind: file.kind,
       size: file.size,
       content: file.content,
@@ -204,12 +205,18 @@ export function createApiRouter(deps: RouteDeps): Router {
       preferDocs: intent.intent !== 'code_explanation',
       preferCode: intent.intent === 'code_explanation' || intent.intent === 'bug_analysis',
     });
+    // Repository search is a *lookup*, so it applies the same relevance floor as
+    // chat: one strong term is enough, but a query whose words appear nowhere
+    // must return nothing instead of 12 weak matches.
+    const best = result.hits[0]?.score ?? 0;
+    const floor = Math.max(0.9, best * 0.2);
+    const ranked = result.hits.filter((hit) => hit.score >= floor);
     const payload: SearchResponse = {
       query,
       normalizedQuery: analysis.normalized,
       totalPassages: retriever.corpusSize(),
       elapsedMs: result.elapsedMs,
-      hits: result.hits.map((hit) => ({
+      hits: ranked.map((hit) => ({
         chunkId: hit.chunkId,
         sourceId: hit.sourceId,
         path: hit.path,

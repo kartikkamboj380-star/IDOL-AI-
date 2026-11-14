@@ -27,6 +27,12 @@ export class ValidationError extends AppError {
   }
 }
 
+export class PayloadTooLargeError extends AppError {
+  constructor(message: string) {
+    super('payload_too_large', message, 413);
+  }
+}
+
 export class RateLimitError extends AppError {
   constructor(message: string, retryAfterSeconds: number) {
     super('rate_limited', message, 429, true);
