@@ -21,7 +21,9 @@
     "index:self": "node --import tsx scripts/index-self.ts",
     "verify": "node --import tsx scripts/verify-journey.ts",
     "package": "node scripts/package.mjs",
-    "build:device": "node scripts/build-device.mjs"
+    "build:device": "node scripts/build-device.mjs",
+    "android:sync": "node scripts/android-sync.mjs",
+    "android:apk": "npm run build:device && npm run android:sync"
   },
   "dependencies": {
     "dompurify": "^3.4.17",

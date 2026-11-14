@@ -1,0 +1,6 @@
+// Minimal by design: one application module, no libraries beyond the Android
+// framework. The whole app is a WebView over bundled assets, so every dependency
+// here would be weight without purpose.
+plugins {
+    id 'com.android.application' version '8.5.2' apply false
+}

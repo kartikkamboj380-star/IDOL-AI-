@@ -2,6 +2,7 @@
  * API client. All requests are same-origin relative paths, so no CORS
  * configuration or token handling ever touches the browser.
  */
+import { ApiError } from './api-error.js';
 import type {
   ApiErrorBody,
   AppStatus,
@@ -13,17 +14,9 @@ import type {
   StreamEvent,
 } from '../types.js';
 
-export class ApiError extends Error {
-  constructor(
-    message: string,
-    readonly code: string,
-    readonly status: number,
-    readonly retryable: boolean,
-  ) {
-    super(message);
-    this.name = 'ApiError';
-  }
-}
+// Defined in api-error.ts so the device build can use it without pulling in the
+// fetch layer; re-exported so existing imports keep working.
+export { ApiError } from './api-error.js';
 
 async function requestJson<T>(path: string, init: RequestInit = {}, timeoutMs = 120_000): Promise<T> {
   const controller = new AbortController();

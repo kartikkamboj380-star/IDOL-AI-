@@ -47,9 +47,49 @@ function inlineLanguageGrammars(): Plugin {
   };
 }
 
+const SERVER_ONLY = [/\/lib\/api\.ts$/];
+
+/**
+ * Keeps server-only code out of the device build entirely.
+ *
+ * The HTTP client, the repository-source dialog, and the file browser all exist
+ * to talk to a backend. Aliasing them to a stub is stronger than relying on
+ * tree-shaking or on lazy imports: Rollup is free to inline a dynamic import
+ * into a single chunk, and a stray static import anywhere would then put fetch
+ * calls back into the APK. With this, the code is not in the graph at all.
+ *
+ * Nothing can reach these at runtime either: the UI branches on IS_DEVICE_BUILD
+ * before offering those screens.
+ */
+function excludeServerOnly(): Plugin {
+  return {
+    name: 'idol-exclude-server-only',
+    enforce: 'pre',
+    resolveId(source, importer) {
+      if (!importer) return null;
+      const resolved = path.resolve(path.dirname(importer), source);
+      if (SERVER_ONLY.some((pattern) => pattern.test(resolved))) {
+        return `\0idol-empty:${resolved}`;
+      }
+      return null;
+    },
+    load(id) {
+      if (!id.startsWith('\0idol-empty:')) return null;
+      // A Proxy that throws on any use: if a branch ever reaches this, the failure
+      // is loud in development instead of a silent undefined.
+      return `const fail = (name) => { throw new Error('Not available in the offline build: ' + name); };
+export const api = new Proxy({}, { get: (_t, key) => () => fail(String(key)) });
+export class ApiError extends Error { constructor(message) { super(message); this.name = 'ApiError'; this.code = 'offline_build'; this.status = 0; this.retryable = false; } }
+export function openSourcesDialog() { fail('openSourcesDialog'); }
+export function openFileBrowser() { fail('openFileBrowser'); }
+`;
+    },
+  };
+}
+
 export default defineConfig({
   root: path.resolve(process.cwd(), 'web'),
-  plugins: deviceBuild ? [inlineLanguageGrammars()] : [],
+  plugins: deviceBuild ? [excludeServerOnly(), inlineLanguageGrammars()] : [],
   define: {
     __IDOL_DEVICE__: JSON.stringify(deviceBuild),
   },
@@ -71,7 +111,7 @@ export default defineConfig({
       // manualChunks and inlineDynamicImports together, so the device build has
       // neither and the web build keeps its split.
       output: deviceBuild
-        ? { inlineDynamicImports: true }
+        ? {}
         : {
             manualChunks: {
               markdown: ['marked', 'dompurify'],

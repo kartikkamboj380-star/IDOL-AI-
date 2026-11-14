@@ -7,14 +7,15 @@
  * targeted (patch known regions) rather than a full re-render, so typing in the
  * composer and scroll position are never disturbed.
  */
-import { ApiError } from './lib/api.js';
-import { backend, IS_DEVICE_BUILD, streamAnswer } from './lib/backend.js';
+import { ApiError } from './lib/api-error.js';
+import { backend, initBackend, streamAnswer, IS_DEVICE_BUILD, type ApiSurface } from './lib/backend.js';
+// Every screen talks to `api`: the on-page engines in the device build, the HTTP
+// API in the server build. Nothing below this line knows which it got.
+let api: ApiSurface;
 
-// Every screen talks to `api`, which in the device build is the on-page engines
-// and in the server build is fetch('/api/*'). Nothing below this line knows which.
-const api = backend();
 import { clear, copyText, debounce, el, formatNumber, formatBytes, relativeTime, $, $$ } from './lib/dom.js';
 import { icons } from './lib/icons.js';
+import { openServerFile, openServerSources } from './lib/server-screens.js';
 import { preloadCommonLanguages } from './lib/highlight.js';
 import { escapeHtml } from './lib/escape.js';
 import { toPlainText } from './lib/markdown.js';
@@ -24,10 +25,8 @@ import { renderAssistantMessage, renderUserMessage, type MessageCallbacks } from
 import { ProcessingIndicator } from './components/processing.js';
 import { renderEmptyState } from './components/empty-state.js';
 import { closeAllDialogs, hasOpenDialog, openDialog } from './components/dialog.js';
-import { openSourcesDialog } from './components/sources-dialog.js';
 import { openDeviceSourcesDialog } from './components/device-sources-dialog.js';
 import { SAMPLE_DOCS, SAMPLE_NAME } from './lib/sample-corpus.js';
-import { openFileBrowser } from './components/file-browser.js';
 import { showToast } from './components/toast.js';
 import type { AnswerPayload, ChatMessage, Conversation, SourceRef, Stage, StreamEvent } from './types.js';
 
@@ -89,6 +88,10 @@ export class IdolApp {
   /* ================================================================== */
 
   async start(): Promise<void> {
+    // The backend is resolved before anything renders, because the shell reads
+    // status immediately. On the device build this is a synchronous no-op; on
+    // the server build it loads the HTTP client chunk.
+    api = await initBackend();
     this.buildShell();
     this.attachGlobalHandlers();
     this.unsubscribe = this.store.subscribe(() => this.renderSidebar());
@@ -595,7 +598,7 @@ export class IdolApp {
       showToast('That source has been removed.', { variant: 'error' });
       return;
     }
-    openFileBrowser(info, {
+    await openServerFile(info, {
       initialPath: source.path,
       highlightLines: { start: source.startLine, end: source.endLine },
     });
@@ -1063,7 +1066,7 @@ export class IdolApp {
   /* Dialogs                                                             */
   /* ================================================================== */
 
-  private openSources(): void {
+  private async openSources(): Promise<void> {
     const onSourcesChanged = (): void => {
       void this.refreshStatus();
       void this.refreshSources();
@@ -1085,7 +1088,7 @@ export class IdolApp {
       return;
     }
 
-    openSourcesDialog({ onSourcesChanged });
+    await openServerSources({ onSourcesChanged });
   }
 
   private openStatusDialog(): void {
@@ -1214,13 +1217,12 @@ export class IdolApp {
           button.append(top, excerpt);
           button.addEventListener('click', () => {
             const source = this.store.state.sources.find((item) => item.id === hit.sourceId);
-            if (source) {
-              dialog.close();
-              openFileBrowser(source, {
-                initialPath: hit.path,
-                highlightLines: { start: hit.startLine, end: hit.endLine },
-              });
-            }
+            if (!source) return;
+            dialog.close();
+            void openServerFile(source, {
+              initialPath: hit.path,
+              highlightLines: { start: hit.startLine, end: hit.endLine },
+            });
           });
           results.append(button);
         }

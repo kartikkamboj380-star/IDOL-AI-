@@ -1,0 +1,38 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'ai.idol.app'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId 'ai.idol.app'
+        minSdk 24
+        targetSdk 34
+        versionCode 110
+        versionName '1.1.0'
+    }
+
+    buildTypes {
+        release {
+            // Unsigned by default so a plain `assembleRelease` works without
+            // secrets. The release workflow signs it when a keystore is present
+            // and otherwise ships a debug-signed APK clearly labelled as such.
+            minifyEnabled false
+            shrinkResources false
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    // The web bundle is copied in by `npm run android:sync` before Gradle runs.
+    sourceSets {
+        main {
+            assets.srcDirs += ['src/main/assets']
+        }
+    }
+}
