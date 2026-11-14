@@ -2,7 +2,7 @@
   "name": "idol-ai",
   "version": "1.0.0",
   "private": true,
-  "description": "IDOL AI — a retrieval-grounded assistant over GitHub repository knowledge, with an honest inference-adapter layer.",
+  "description": "IDOL AI \u2014 a retrieval-grounded assistant over GitHub repository knowledge, with an honest inference-adapter layer.",
   "license": "MIT",
   "type": "module",
   "engines": {
@@ -19,7 +19,8 @@
     "test": "node --import tsx --test --test-reporter=spec tests/*.test.ts",
     "test:build": "npm run build && npm test",
     "index:self": "node --import tsx scripts/index-self.ts",
-    "verify": "node --import tsx scripts/verify-journey.ts"
+    "verify": "node --import tsx scripts/verify-journey.ts",
+    "package": "node scripts/package.mjs"
   },
   "dependencies": {
     "dompurify": "^3.4.17",

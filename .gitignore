@@ -11,3 +11,6 @@ coverage/
 
 # transient dirs
 .ci-data/
+
+# downloadable packages
+dist-package/
