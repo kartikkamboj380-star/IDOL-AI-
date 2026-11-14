@@ -1,0 +1,206 @@
+{
+  "concepts": {
+    "requirement": [
+      "compatible",
+      "depend",
+      "dependency",
+      "gpu",
+      "hardware",
+      "memory",
+      "minimum",
+      "need",
+      "prerequisite",
+      "require",
+      "resource",
+      "setup",
+      "support",
+      "vram"
+    ],
+    "resource": [
+      "capacity",
+      "cpu",
+      "cuda",
+      "device",
+      "disk",
+      "gb",
+      "gpu",
+      "hardware",
+      "memory",
+      "nvidia",
+      "ram",
+      "storage",
+      "vram"
+    ],
+    "install": [
+      "installation",
+      "pip",
+      "npm",
+      "clone",
+      "setup",
+      "requirement",
+      "download"
+    ],
+    "run": [
+      "execute",
+      "command",
+      "usage",
+      "sample",
+      "invoke",
+      "launch",
+      "cli"
+    ],
+    "usage": [
+      "example",
+      "command",
+      "flag",
+      "option",
+      "argument",
+      "parameter",
+      "cli"
+    ],
+    "config": [
+      "configuration",
+      "setting",
+      "option",
+      "environment",
+      "variable",
+      "json",
+      "toml"
+    ],
+    "model": [
+      "weight",
+      "checkpoint",
+      "parameter",
+      "safetensors",
+      "encoder",
+      "decoder",
+      "denoiser",
+      "architecture"
+    ],
+    "performance": [
+      "benchmark",
+      "speed",
+      "latency",
+      "time",
+      "faster",
+      "second",
+      "throughput",
+      "median"
+    ],
+    "compare": [
+      "comparison",
+      "versus",
+      "baseline",
+      "difference",
+      "better",
+      "outperform"
+    ],
+    "licence": [
+      "license",
+      "apache",
+      "mit",
+      "copyright",
+      "permission",
+      "terms"
+    ],
+    "security": [
+      "token",
+      "secret",
+      "authentication",
+      "permission",
+      "private",
+      "scope"
+    ],
+    "error": [
+      "fail",
+      "exception",
+      "missing",
+      "denied",
+      "timeout",
+      "crash",
+      "issue",
+      "problem",
+      "troubleshoot"
+    ],
+    "test": [
+      "testing",
+      "suite",
+      "workflow",
+      "ci",
+      "pytest",
+      "jest",
+      "check"
+    ],
+    "deploy": [
+      "deployment",
+      "host",
+      "hosting",
+      "docker",
+      "server",
+      "production",
+      "build"
+    ],
+    "size": [
+      "byte",
+      "megabyte",
+      "gigabyte",
+      "mb",
+      "gb",
+      "large",
+      "storage"
+    ],
+    "output": [
+      "result",
+      "produce",
+      "generate",
+      "write",
+      "save",
+      "export"
+    ],
+    "input": [
+      "image",
+      "source",
+      "accept"
+    ],
+    "quality": [
+      "psnr",
+      "ssim",
+      "lpips",
+      "score",
+      "metric",
+      "fidelity"
+    ],
+    "gaussian": [
+      "splat",
+      "ply",
+      "point",
+      "render",
+      "3d"
+    ],
+    "training": [
+      "train",
+      "finetune",
+      "fine-tune",
+      "dataset",
+      "epoch",
+      "loss"
+    ],
+    "version": [
+      "release",
+      "changelog",
+      "revision",
+      "commit",
+      "tag"
+    ],
+    "hardware": [
+      "resource",
+      "gpu",
+      "vram",
+      "memory",
+      "device",
+      "require",
+      "support",
+      "cuda"
+    ]
+  }
+}
