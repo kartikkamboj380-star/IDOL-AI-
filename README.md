@@ -23,7 +23,34 @@ required.
 
 ---
 
+## Download the app (no build step)
+
+You do not need to clone or build anything to run this. Every successful
+**Release** workflow publishes a self-contained package:
+
+1. Open the **Actions** tab → **Release** → the newest successful run
+2. Scroll to **Artifacts** → download `idol-ai-<version>`
+3. Unpack it and run:
+
+```bash
+unzip idol-ai-1.0.0.zip
+cd idol-ai-1.0.0
+node start.mjs          # → http://localhost:8787
+```
+
+Needs Node.js 20.11 or newer. The archive already contains the built UI, the
+compiled server and its production dependencies, so it runs **offline** — no
+`npm install`, no network. Check it with `node scripts/verify.mjs` (ten
+self-checks) and compare against `SHA256SUMS.txt`.
+
+The workflow verifies the package by extracting the archive in a clean directory
+and running those checks against it *before* uploading, so a broken archive cannot
+be published. A push to `main` additionally attaches the same files to a
+[GitHub Release](../../releases).
+
 ## Quick start
+
+Building from source:
 
 ```bash
 git clone https://github.com/kartikkamboj380-star/IDOL-AI-.git
