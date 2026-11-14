@@ -1,0 +1,49 @@
+# Render Blueprint — https://render.com/docs/blueprint-spec
+#
+#   1. Push this repository to GitHub.
+#   2. In Render: New → Blueprint → select the repository.
+#   3. Set the secret environment variables (GITHUB_TOKEN is optional).
+#
+# Render builds the Dockerfile and gives you an HTTPS URL. The persistent disk
+# keeps the index between deploys, which matters: without it the corpus is
+# rebuilt from scratch on every restart.
+services:
+  - type: web
+    name: idol-ai
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    plan: starter
+    region: oregon
+    healthCheckPath: /api/health
+    autoDeploy: true
+    disk:
+      name: idol-data
+      mountPath: /app/.data
+      sizeGB: 1
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: "8787"
+      - key: IDOL_DATA_DIR
+        value: /app/.data
+      # The demo documentation shipped in the image, indexed on first boot.
+      - key: IDOL_LOCAL_DIR
+        value: /app/huggingface
+      # Which repository to index on boot. Change this to your own.
+      - key: IDOL_DEFAULT_REPO
+        value: kartikkamboj380-star/IDOL-AI-
+      # Optional: private repos, or 5,000 requests/hour instead of 60.
+      - key: GITHUB_TOKEN
+        sync: false
+      # Optional inference provider. With these unset the app runs in
+      # knowledge mode and says so in every answer.
+      - key: IDOL_INFERENCE_PROVIDER
+        sync: false
+      - key: IDOL_INFERENCE_BASE_URL
+        sync: false
+      - key: IDOL_INFERENCE_API_KEY
+        sync: false
+      - key: IDOL_INFERENCE_MODEL
+        sync: false

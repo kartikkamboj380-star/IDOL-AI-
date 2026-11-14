@@ -14,7 +14,6 @@ import type { AnswerPayload } from '../shared/types.js';
 
 interface DomContext {
   window: JSDOM['window'];
-  document: Document;
 }
 
 let server: TestServer;
@@ -239,14 +238,26 @@ describe('message component', () => {
         {
           id: 1,
           sourceId: 's',
+          sourceName: 'repo',
           path: 'README.md',
           heading: 'Benchmark',
           startLine: 127,
           endLine: 139,
           excerpt: 'Idol 12.25 PSNR',
+          kind: 'markdown',
+          language: 'markdown',
+          score: 9,
+          htmlUrl: null,
         },
       ],
-      validation: { citations: [{ marker: 1, status: 'verified', path: 'README.md' }], passed: true },
+      validation: {
+        citations: [{ marker: 1, status: 'verified', sourceId: 's', path: 'README.md' }],
+        passed: true,
+        removedMarkers: 0,
+        unsupportedClaims: [],
+        citationCoverage: 1,
+        notes: [],
+      },
       timings: { total: 42 },
       codeFindings: [],
     };
@@ -283,7 +294,14 @@ describe('message component', () => {
           intent: 'factual_lookup',
           confidence: 'low',
           sources: [],
-          validation: { citations: [], passed: false, unsupportedClaims: ['made up'], removedMarkers: 0 },
+          validation: {
+            citations: [],
+            passed: false,
+            unsupportedClaims: ['made up'],
+            removedMarkers: 0,
+            citationCoverage: 0,
+            notes: [],
+          },
           timings: { total: 10 },
           codeFindings: [],
         } as unknown as AnswerPayload,

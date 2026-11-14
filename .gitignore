@@ -8,3 +8,6 @@ dist-server/
 .DS_Store
 coverage/
 .vite/
+
+# transient dirs
+.ci-data/
