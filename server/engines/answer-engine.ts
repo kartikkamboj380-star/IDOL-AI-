@@ -31,12 +31,12 @@ import type {
 } from '../../shared/types.js';
 import type { Logger } from '../logger.js';
 import type { AppConfig } from '../config.js';
-import type { InferenceAdapter } from '../inference/provider.js';
+import type { ModelAdapter } from '../inference/contract.js';
 import type { BuiltContext } from './context-builder.js';
 import type { Passage } from '../knowledge/indexer.js';
 import { composeKnowledgeAnswer } from './answer-composer.js';
 import { validateAnswer } from './validator.js';
-import { InferenceError } from '../inference/provider.js';
+import { ModelUnavailableError } from '../inference/contract.js';
 import { newId } from '../util/common.js';
 
 export interface AnswerInput {
@@ -66,7 +66,7 @@ export class AnswerEngine {
   constructor(
     private readonly config: AppConfig,
     private readonly logger: Logger,
-    private readonly inference: InferenceAdapter,
+    private readonly inference: ModelAdapter,
   ) {}
 
   /** Which writer will run for this request, and why. */
@@ -132,7 +132,7 @@ export class AnswerEngine {
         // A provider failure must not lose the answer: fall back to extractive.
         this.logger.warn('inference generation failed; falling back to extractive writing', { error });
         usedMode = 'knowledge';
-        if (error instanceof InferenceError) inferenceNote = error.message;
+        if (error instanceof ModelUnavailableError) inferenceNote = error.message;
         const fallback = composeKnowledgeAnswer({ ...composeInput, mode: 'knowledge' });
         answerText = fallback.text;
         input.onDelta?.(fallback.text);

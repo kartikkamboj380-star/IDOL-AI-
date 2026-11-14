@@ -7,7 +7,12 @@
  * targeted (patch known regions) rather than a full re-render, so typing in the
  * composer and scroll position are never disturbed.
  */
-import { api, ApiError, streamChat } from './lib/api.js';
+import { ApiError } from './lib/api.js';
+import { backend, IS_DEVICE_BUILD, streamAnswer } from './lib/backend.js';
+
+// Every screen talks to `api`, which in the device build is the on-page engines
+// and in the server build is fetch('/api/*'). Nothing below this line knows which.
+const api = backend();
 import { clear, copyText, debounce, el, formatNumber, formatBytes, relativeTime, $, $$ } from './lib/dom.js';
 import { icons } from './lib/icons.js';
 import { preloadCommonLanguages } from './lib/highlight.js';
@@ -20,6 +25,8 @@ import { ProcessingIndicator } from './components/processing.js';
 import { renderEmptyState } from './components/empty-state.js';
 import { closeAllDialogs, hasOpenDialog, openDialog } from './components/dialog.js';
 import { openSourcesDialog } from './components/sources-dialog.js';
+import { openDeviceSourcesDialog } from './components/device-sources-dialog.js';
+import { SAMPLE_DOCS, SAMPLE_NAME } from './lib/sample-corpus.js';
 import { openFileBrowser } from './components/file-browser.js';
 import { showToast } from './components/toast.js';
 import type { AnswerPayload, ChatMessage, Conversation, SourceRef, Stage, StreamEvent } from './types.js';
@@ -777,7 +784,7 @@ export class IdolApp {
       }
     };
 
-    await streamChat(
+    await streamAnswer(
       {
         conversationId: params.conversationId,
         message: params.message,
@@ -1057,14 +1064,28 @@ export class IdolApp {
   /* ================================================================== */
 
   private openSources(): void {
-    openSourcesDialog({
-      onSourcesChanged: () => {
-        void this.refreshStatus();
-        void this.refreshSources();
-        void this.refreshSuggestions();
-        this.renderThread();
-      },
-    });
+    const onSourcesChanged = (): void => {
+      void this.refreshStatus();
+      void this.refreshSources();
+      void this.refreshSuggestions();
+      this.renderThread();
+    };
+
+    if (IS_DEVICE_BUILD) {
+      // No GitHub form here: this build has no network, so it offers files from
+      // the phone instead of a promise it cannot keep.
+      openDeviceSourcesDialog({
+        api,
+        onSourcesChanged,
+        loadSample: async () => {
+          const result = await api.addDocuments({ name: SAMPLE_NAME, docs: SAMPLE_DOCS });
+          return { files: result.source.filesIndexed ?? 0, passages: 0 };
+        },
+      });
+      return;
+    }
+
+    openSourcesDialog({ onSourcesChanged });
   }
 
   private openStatusDialog(): void {

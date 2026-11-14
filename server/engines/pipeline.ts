@@ -25,7 +25,7 @@ import type {
 import type { Logger } from '../logger.js';
 import type { KnowledgeService } from '../knowledge/service.js';
 import type { Retriever } from '../knowledge/retriever.js';
-import type { InferenceAdapter } from '../inference/provider.js';
+import type { ModelAdapter } from '../inference/contract.js';
 import type { AppConfig } from '../config.js';
 import { buildMemory } from './memory.js';
 import { KnowledgeEngine } from './knowledge-engine.js';
@@ -55,7 +55,7 @@ export class AnswerPipeline {
     private readonly logger: Logger,
     private readonly knowledge: KnowledgeService,
     private readonly retriever: Retriever,
-    private readonly inference: InferenceAdapter,
+    private readonly inference: ModelAdapter,
   ) {
     this.knowledgeEngine = new KnowledgeEngine(logger, knowledge, retriever);
     this.answerEngine = new AnswerEngine(config, logger, inference);

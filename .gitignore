@@ -14,3 +14,6 @@ coverage/
 
 # downloadable packages
 dist-package/
+
+# offline device bundle (built by npm run build:device)
+dist-device/

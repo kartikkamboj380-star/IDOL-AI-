@@ -13,6 +13,7 @@
  */
 import { AppError } from '../util/errors.js';
 import { HttpError, request } from '../util/http.js';
+import type { ModelAdapter } from './contract.js';
 import type { Logger } from '../logger.js';
 
 export interface InferenceStatusInternal {
@@ -43,7 +44,7 @@ export class InferenceError extends AppError {
   }
 }
 
-export class InferenceAdapter {
+export class InferenceAdapter implements ModelAdapter {
   private lastError: string | null = null;
   private consecutiveFailures = 0;
 

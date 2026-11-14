@@ -1,8 +1,8 @@
 /** Small async helpers: mutex, timeouts, retries, concurrency limiting, hashing. */
-import { createHash, randomUUID } from 'node:crypto';
+import { randomId as portableRandomId, sha256Hex } from '../../shared/crypto.js';
 
 export function sha256(input: string | Buffer): string {
-  return createHash('sha256').update(input).digest('hex');
+  return sha256Hex(input);
 }
 
 export function shortHash(input: string | Buffer, length = 10): string {
@@ -10,7 +10,7 @@ export function shortHash(input: string | Buffer, length = 10): string {
 }
 
 export function newId(prefix: string): string {
-  return `${prefix}_${randomUUID().replaceAll('-', '').slice(0, 20)}`;
+  return portableRandomId(prefix);
 }
 
 export class Mutex {

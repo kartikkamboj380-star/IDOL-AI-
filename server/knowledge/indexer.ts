@@ -6,7 +6,7 @@
  * data files become whole-file passages. Every passage keeps exact line ranges
  * so citations can show verbatim source text.
  */
-import { createHash } from 'node:crypto';
+import { sha1Hex } from '../../shared/crypto.js';
 import type { ChunkKind } from '../../shared/types.js';
 import { contentTerms, tokenize } from './text.js';
 import type { ParsedFile } from './file-types.js';
@@ -104,7 +104,7 @@ const WINDOW = 44;
 const OVERLAP = 8;
 
 function passageId(sourceId: string, path: string, index: number): string {
-  return createHash('sha1').update(`${sourceId}:${path}:${index}`).digest('hex').slice(0, 16);
+  return sha1Hex(`${sourceId}:${path}:${index}`).slice(0, 16);
 }
 
 /** Splits long markdown sections on paragraph boundaries. */
