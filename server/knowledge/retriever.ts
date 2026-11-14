@@ -65,7 +65,46 @@ interface IndexedSource {
   sourceName: string;
 }
 
+
+
+/** Text that introduces an example question rather than answering one. */
+const QUOTED_QUESTION = /(^|\n)\s*(you|ask|example|e\.g\.|for example|try|query|question|prompt)\b[^\n]{0,40}(:|\?)/;
+
+/** True when a phrase reads like a question ("how much vram does this need"). */
+const QUESTION_SHAPED = /\b(how|what|why|when|where|which|who|does|do|is|are|can)\b/;
+
+/**
+ * True when the passage contains the phrase inside something that looks like a
+ * displayed example: a blockquote, a fenced code block, an inline code span, or a
+ * quote character. Those are transcriptions of a question, not answers.
+ */
+function quotesQuestion(text: string): boolean {
+  return /[`>"]|^\s*\|/.test(text) || /\?\s*(\n|$)/.test(text);
+}
+
+/**
+ * True for IDOL AI's own documentation rather than the indexed project's.
+ *
+ * These are the root-level docs that ship with the application. They stay
+ * searchable (a developer asking "how do I run the tests?" needs them) but are
+ * down-weighted so that a question about the demo corpus is answered from the
+ * corpus, not from our own marketing copy.
+ */
+export function isSelfDocumentation(filePath: string): boolean {
+  const lower = filePath.toLowerCase();
+  if (/^(readme|architecture|limitations|contributing|changelog|license)\.md$/.test(lower)) return true;
+  // Our own docs/ tree carries the same meta-content, so it gets the same prior.
+  return /^docs\/(architecture|limitations|design|internals|api)\.md$/.test(lower);
+}
+
 export class Retriever {
+  /**
+   * When true, IDOL AI's own documentation ranks at full weight. Developers
+   * working on the app set IDOL_INDEX_APP_SOURCES=1 and want that; end users
+   * asking about their own repository do not.
+   */
+  private readonly includeSelfDocsAtFullWeight = process.env.IDOL_INDEX_APP_SOURCES === '1';
+
   constructor(private readonly getSources: () => IndexedSource[]) {}
 
   /**
@@ -126,10 +165,13 @@ export class Retriever {
           .map((id) => source.index.passages.find((passage) => passage.id === id))
           .find((passage) => passage && passage.kind === 'markdown');
         if (!opening) continue;
+        // The corpus a user came to ask about should win the anchor slot over
+        // IDOL AI's own README, which also describes this repository.
+        const selfDoc = isSelfDocumentation(opening.path) && !this.includeSelfDocsAtFullWeight;
         scored.push({
           passage: opening,
-          score: 12.5,
-          signals: { anchor: 1 },
+          score: selfDoc ? 8 : 12.5,
+          signals: selfDoc ? { anchor: 1, selfDoc: 0.64 } : { anchor: 1 },
           source,
         });
         matchedTerms.add('readme-anchor');
@@ -223,6 +265,21 @@ export class Retriever {
         }
         const signals: Record<string, number> = { bm25: Number(baseScore.toFixed(4)) };
         let score = baseScore;
+
+        // IDOL AI's own meta-documentation (README/ARCHITECTURE/LIMITATIONS at the
+        // repository root, or any docs/ page) describes *how the tool works*. It
+        // must stay searchable — "how do I run the tests?" is a real question —
+        // but it should not outrank the corpus a user actually came to ask about,
+        // so it carries a modest prior. Opt in to full weight with
+        // IDOL_INDEX_APP_SOURCES=1, which is what developers debugging the app want.
+        if (!this.includeSelfDocsAtFullWeight && isSelfDocumentation(passage.path)) {
+          // Strong prior, not a light one: meta-documentation describes the tool,
+          // and its marketing prose is dense with the same vocabulary a user asks
+          // about. 0.35 keeps it available for genuine "how does IDOL work?"
+          // questions without letting it beat the corpus being asked about.
+          score *= 0.35;
+          signals.selfDoc = 0.35;
+        }
 
         const lowerText = passage.text.toLowerCase();
         if (quoted && lowerText.includes(quoted) && passage.kind !== 'code') {
@@ -319,12 +376,20 @@ export class Retriever {
           signals.kind = kindBoost;
         }
 
-        // A verbatim phrase match is strong evidence in prose, but in source
-        // code it usually means a string literal (a sample question, a UI hint).
+        // A verbatim phrase match is strong evidence in prose, but it is *not*
+        // evidence when the passage is quoting a question rather than answering
+        // one: documentation that shows "how do I install this?" as an example
+        // query, or a test fixture containing the question, would otherwise
+        // outrank the page that actually explains the answer.
         if (normalizedPhrase.length > 8 && lowerText.includes(normalizedPhrase)) {
-          const bonus = passage.kind === 'code' ? 1.05 : 1.6;
-          score *= bonus;
-          signals.exactPhrase = bonus;
+          const quoting = QUOTED_QUESTION.test(lowerText) || QUESTION_SHAPED.test(normalizedPhrase) && quotesQuestion(lowerText);
+          if (quoting) {
+            signals.exactPhrase = 1;
+          } else {
+            const bonus = passage.kind === 'code' ? 1.05 : 1.6;
+            score *= bonus;
+            signals.exactPhrase = bonus;
+          }
         }
 
         scored.push({ passage, score, signals, source });

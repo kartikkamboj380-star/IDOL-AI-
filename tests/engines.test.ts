@@ -196,6 +196,48 @@ describe('indexing and retrieval', () => {
     { path: 'src/sample.ts', code: 'export function sample(image: string) {\n  return runModel(image, { steps: 50 });\n}\n' },
   ];
 
+  function buildSourceIndexWith(docs: Array<{ path: string; markdown?: string; code?: string }>): SourceIndex {
+    const files: SourceIndexFile[] = [];
+    const allPassages = [];
+    for (const doc of docs) {
+      const raw = doc.markdown ?? doc.code ?? '';
+      const parsed = parseFile(doc.path, raw);
+      if (!parsed.ok) throw new Error(`parse failed: ${doc.path}`);
+      const passages = buildPassages('ad-hoc', parsed, null, { maxChunks: 100 });
+      allPassages.push(...passages);
+      files.push({
+        path: doc.path,
+        size: raw.length,
+        sha: null,
+        language: parsed.language,
+        kind: parsed.kind,
+        lineCount: parsed.lineCount,
+        passageIds: passages.map((passage) => passage.id),
+        title: parsed.title,
+        truncated: false,
+        htmlUrl: null,
+      });
+    }
+    const inverted = buildInvertedIndex('ad-hoc', files, allPassages);
+    return {
+      sourceId: 'ad-hoc',
+      builtAt: new Date().toISOString(),
+      ref: 'test',
+      resolvedRef: 'test',
+      files,
+      passages: allPassages,
+      ...inverted,
+      stats: {
+        filesIndexed: files.length,
+        passages: allPassages.length,
+        bytes: 0,
+        skipped: 0,
+        truncatedTree: false,
+        truncatedFiles: 0,
+      },
+    };
+  }
+
   function buildSourceIndex(): SourceIndex {
     const files: SourceIndexFile[] = [];
     const allPassages = [];
@@ -266,6 +308,39 @@ describe('indexing and retrieval', () => {
   it('builds excerpts around the best matching line', () => {
     const excerpt = makeExcerpt('alpha\nbeta\nthe VRAM figure is 7.2 GB here\ndelta', ['vram'], 60);
     assert.match(excerpt, /7\.2 GB/);
+  });
+
+  it('down-weights the app\'s own documentation against the corpus', () => {
+    // A question about the indexed project must be answered from that project,
+    // not from IDOL AI's marketing README, which repeats similar vocabulary.
+    const appOnly = buildSourceIndexWith([
+      {
+        path: 'README.md',
+        markdown: '# IDOL AI\n\nIDOL AI finds passages about VRAM and GPU requirements. It cites sources.\n',
+      },
+    ]);
+    const retrieverFor = (index: SourceIndex) =>
+      new Retriever(() => [{ index, sourceName: 't', htmlUrlFor: () => null }]);
+    const selfHit = retrieverFor(appOnly).retrieve('how much VRAM does this need', { topK: 3, preferDocs: true });
+    const signals = selfHit.hits[0]?.signals ?? {};
+    assert.ok(signals.selfDoc !== undefined, 'the app README must carry a self-doc prior');
+    assert.ok((signals.selfDoc as number) < 1);
+  });
+
+  it('does not reward a passage that merely quotes the question', () => {
+    // Our README contains a literal example: "You: How much VRAM does this need?".
+    // A help page that prints the question must not outrank the real answer.
+    const index = buildSourceIndexWith([
+      { path: 'README.md', markdown: '# Tool\n\nYou:  How much VRAM does this need?\n\nAnswer placement below.\n' },
+      {
+        path: 'huggingface/demo/README.md',
+        markdown:
+          '# Demo\n\nIt runs on consumer GPUs, using 7.2 GB of VRAM.\n\n| GPU | VRAM |\n|---|---|\n| H100 | 80 GB |\n',
+      },
+    ]);
+    const retriever = new Retriever(() => [{ index, sourceName: 't', htmlUrlFor: () => null }]);
+    const result = retriever.retrieve('How much VRAM does this need?', { topK: 3, preferDocs: true });
+    assert.equal(result.hits[0]?.path, 'huggingface/demo/README.md');
   });
 
   it('expands ambiguous queries with documentation vocabulary', () => {

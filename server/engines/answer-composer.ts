@@ -132,28 +132,41 @@ function chooseLeadSnippet(ranked: ContextSnippet[], analysis: QuestionAnalysis)
   const terms = analysis.terms.filter((term) => term.length > 2);
   if (terms.length === 0) return ranked[0] ?? null;
   for (const snippet of ranked.slice(0, 4)) {
-    const lines = snippet.text.split('\n').filter((line) => line.trim().length > 0);
-    const proseLines = lines.filter((line) => !line.trim().startsWith('|'));
-    // A table-dominant passage has no prose of its own to quote — its caption
-    // belongs to the table section, not the opening sentence.
-    if (lines.length > 0 && proseLines.length / lines.length < 0.34) continue;
-    const prose = normalizeText(proseLines.join(' '));
-    const overlap = terms.filter((term) => prose.includes(term)).length;
+    const haystack = normalizeText(snippet.text);
+    const overlap = terms.filter((term) => haystack.includes(term)).length;
     if (overlap > 0) return snippet;
   }
   return ranked[0] ?? null;
 }
 
 function leadSection(input: ComposeInput): string {
-  const ranked = proseSnippets(input);
-  const top = chooseLeadSnippet(ranked, input.analysis) ?? (input.context.snippets[0] as ContextSnippet);
-  const isCode = top.kind === 'code';
-  const sentences = isCode ? [] : pickBestSentences(top.text, input.analysis, 2);
-  const location = `${top.path}${top.heading ? ` › ${top.heading}` : ''}`;
-  if (sentences.length === 0) {
-    return `The most relevant passage is **${location}** (lines ${top.startLine}–${top.endLine}) [${top.id}], but it contains code rather than prose — the excerpts below quote it exactly.`;
+  // Trust the retriever's ranking for the opening passage. Re-ranking here is
+  // how a passage that merely *mentions* the question's words ("the VRAM figure
+  // is an example") ends up ahead of the table that actually answers it. The
+  // retriever already applies document weights, code/data penalties, phrase
+  // bonuses and the self-documentation prior; this stage must not second-guess it.
+  const top = input.context.snippets[0] as ContextSnippet | undefined;
+  if (!top) return '';
+
+  const location = `${top.path}${top.heading ? ` › ${tidyHeading(top.heading)}` : ''}`;
+  const hasTable = /^\s*\|.+\|/m.test(top.text) && /^\s*\|[-: |]+\|/m.test(top.text);
+
+  if (top.kind !== 'code') {
+    const sentences = pickBestSentences(top.text, input.analysis, 2);
+    if (sentences.length > 0) {
+      return `${sentences.join(' ')} [${top.id}]\n\n*Source: \`${location}\`, lines ${top.startLine}–${top.endLine}.*`;
+    }
   }
-  return `${sentences.join(' ')} [${top.id}]\n\n*Source: \`${location}\`, lines ${top.startLine}–${top.endLine}.*`;
+
+  // No prose to quote. Say precisely what the passage is, so the reader knows
+  // why the answer continues below instead of pretending a sentence was found.
+  if (hasTable) {
+    return `The figures are in the table at **${location}** (lines ${top.startLine}–${top.endLine}) [${top.id}], reproduced below.`;
+  }
+  if (top.kind === 'code') {
+    return `The most relevant passage is **${location}** (lines ${top.startLine}–${top.endLine}) [${top.id}], which is source code — the excerpts below quote it exactly.`;
+  }
+  return `The most relevant passage is **${location}** (lines ${top.startLine}–${top.endLine}) [${top.id}]; the excerpts below quote it exactly.`;
 }
 
 function howToSections(input: ComposeInput): string[] {

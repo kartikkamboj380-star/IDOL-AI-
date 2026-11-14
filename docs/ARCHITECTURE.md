@@ -186,8 +186,10 @@ says so; it never silently presents extractive output as generated text.
 | `GET` | `/api/sources/:id/tree` | Directory listing from the index |
 | `GET` | `/api/sources/:id/file` | File content with language and line count |
 | `GET` | `/api/search` | Repository search |
+| `GET` | `/api/suggestions` | Starter questions drawn from the indexed corpus |
 | `POST` | `/api/chat` | SSE stream: `stage`, `meta`, `sources`, `delta`, `done`, `error` |
-| `GET`/`POST`/`DELETE` | `/api/github/token` | Manage the stored GitHub token |
+| `GET` | `/api/github` | Connection state (never the token itself) |
+| `POST` / `DELETE` | `/api/github/token` | Store or clear a token (server-side only) |
 
 `shared/types.ts` is the single source of truth for both sides; it is imported by the
 server and by the browser bundle, so a contract change is a compile error rather than
