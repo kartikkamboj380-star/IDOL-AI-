@@ -113,12 +113,30 @@ jobs:
           fi
 
       - name: Assemble the APK
+        id: assemble
         working-directory: android
         env:
           IDOL_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           IDOL_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           IDOL_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-        run: gradle :app:assembleRelease --no-daemon --stacktrace
+        # The failure message becomes a job annotation, which is readable from the
+        # API. Build logs live in storage that is not always reachable, and a red
+        # X with no reason is worse than useless.
+        run: |
+          set +e
+          gradle :app:assembleRelease --no-daemon --stacktrace > "$RUNNER_TEMP/gradle.log" 2>&1
+          STATUS=$?
+          if [ $STATUS -ne 0 ]; then
+            echo "--- gradle output ---"
+            tail -60 "$RUNNER_TEMP/gradle.log"
+            {
+              echo "::error title=Gradle failed::"
+              grep -E "^(FAILURE|\* What went wrong|> |Caused by|e: |error:)" "$RUNNER_TEMP/gradle.log" | head -25 | sed 's/%/%25/g; s/\r//g'
+            } >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || true
+            echo "::error::$(grep -E '^(\* What went wrong|> |Caused by)' "$RUNNER_TEMP/gradle.log" | head -8 | tr '\n' ' ' | cut -c1-900)"
+            exit $STATUS
+          fi
+          tail -15 "$RUNNER_TEMP/gradle.log"
 
       - name: Name and inspect the APK
         id: apk
