@@ -14,6 +14,7 @@ import type { AnswerMode, IntentResult, MemoryState, QuestionAnalysis } from '..
 import type { BuiltContext, ContextSnippet } from './context-builder.js';
 import type { Passage } from '../knowledge/indexer.js';
 import { normalizeText } from '../knowledge/text.js';
+import { isSelfDocumentation } from '../knowledge/retriever.js';
 import {
   cleanProse,
   extractBullets,
@@ -297,7 +298,7 @@ function summarySections(input: ComposeInput): string[] {
   const ordered = proseSnippets(input)
     .slice()
     .sort((a, b) => Number(isDescriptionPassage(b.text)) - Number(isDescriptionPassage(a.text)));
-  for (const snippet of ordered) {
+  for (const snippet of onTopicSnippets(ordered)) {
     const label = tidyHeading(snippet.heading ?? snippet.path.split('/').pop() ?? snippet.path);
     const sentence = pickBestSentences(snippet.text, input.analysis, 1)[0];
     const bullet = sentence ?? extractBullets(snippet.text)[0];
@@ -328,7 +329,7 @@ function comparisonSections(input: ComposeInput): string[] {
 
 function documentationSections(input: ComposeInput): string[] {
   const bySource = new Map<string, ContextSnippet[]>();
-  for (const snippet of proseSnippets(input)) {
+  for (const snippet of onTopicSnippets(proseSnippets(input))) {
     const list = bySource.get(snippet.sourceName) ?? [];
     list.push(snippet);
     bySource.set(snippet.sourceName, list);
@@ -387,7 +388,7 @@ function detailSections(input: ComposeInput): string[] {
   const ordered = proseSnippets(input)
     .slice()
     .sort((a, b) => Number(isDescriptionPassage(b.text)) - Number(isDescriptionPassage(a.text)));
-  for (const snippet of ordered) {
+  for (const snippet of onTopicSnippets(ordered)) {
     for (const sentence of pickBestSentences(snippet.text, input.analysis, 2)) {
       const key = sentence.toLowerCase().slice(0, 40);
       if (seen.has(key)) continue;
@@ -401,8 +402,9 @@ function detailSections(input: ComposeInput): string[] {
   }
   if (bullets.length > 0) return [`**What the sources say**\n\n${bullets.join('\n')}`];
 
-  // Fallback 1: any prose paragraph at all, even if it does not match keywords.
-  for (const snippet of input.context.snippets) {
+  // Fallback 1: any prose paragraph at all, even if it does not match keywords —
+  // but still only from passages that are on topic.
+  for (const snippet of onTopicSnippets(input.context.snippets)) {
     const paragraphs = cleanProse(snippet.text)
       .split('\n')
       .map((line) => line.trim())
@@ -523,6 +525,27 @@ function rankSnippetsForQuestion(input: ComposeInput): ContextSnippet[] {
  * Prose snippets only. A passage indexed as markdown can still be a table row
  * or a config blob, so this also rejects passages that read like data.
  */
+/**
+ * Passages worth quoting in the body of an answer: those that scored at least
+ * 45% of the best hit. Weaker matches usually share one word with the question
+ * (the app's own notes matching "run"/"hardware") and quoting them buries the
+ * real answer under unrelated material.
+ */
+function onTopicSnippets(snippets: ContextSnippet[]): ContextSnippet[] {
+  const topScore = Math.max(0, ...snippets.map((snippet) => snippet.score));
+  // When the best evidence comes from the project's own docs, the app's docs may
+  // speak too (someone asking "how do I run the tests?" needs docs/ARCHITECTURE.md).
+  // When it comes from the indexed corpus, they are background noise: they earned
+  // their retrieval score on shared vocabulary, not on answering the question.
+  const leadIsSelfDoc = snippets[0] !== undefined && isSelfDocumentation(snippets[0].path);
+  const relevant = snippets.filter((snippet) => {
+    if (topScore > 0 && snippet.score < topScore * 0.45) return false;
+    if (!leadIsSelfDoc && isSelfDocumentation(snippet.path)) return false;
+    return true;
+  });
+  return relevant.length > 0 ? relevant : snippets.slice(0, 1);
+}
+
 function proseSnippets(input: ComposeInput): ContextSnippet[] {
   return rankSnippetsForQuestion(input).filter(
     (snippet) => snippet.kind !== 'code' && snippet.kind !== 'data' && !looksLikeData(snippet.text),

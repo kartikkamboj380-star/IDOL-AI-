@@ -343,6 +343,57 @@ describe('indexing and retrieval', () => {
     assert.equal(result.hits[0]?.path, 'huggingface/demo/README.md');
   });
 
+  it('keeps off-topic passages out of the supporting bullets', () => {
+    // Regression: the app's own architecture notes matched "run"/"hardware" and
+    // were appended as bullets under a GPU question, burying the real answer.
+    const index = buildSourceIndexWith([
+      {
+        path: 'huggingface/demo/README.md',
+        markdown:
+          '# Demo\n\n## Across GPUs\n\n| GPU | VRAM |\n|---|---|\n| H100 | 80 GB |\n| RTX 4090 | 24 GB |\n',
+      },
+      {
+        path: 'docs/ARCHITECTURE.md',
+        markdown:
+          '# Architecture\n\nRetrieval runs BM25 over stemmed terms. Hardware requirements are out of scope for this document.\n',
+      },
+    ]);
+    const question = 'How much VRAM do I need to run this?';
+    const analysis = analyzeQuestion(question);
+    const intent = detectIntent(analysis);
+    const retriever = new Retriever(() => [{ index, sourceName: 't', htmlUrlFor: () => null }]);
+    const retrieved = retriever.retrieve(question, { topK: 4, preferDocs: true });
+    const context = buildContext({
+      hits: retrieved.hits,
+      maxChars: 4000,
+      maxSnippets: 4,
+      maxPerFile: 2,
+    });
+    const answer = composeKnowledgeAnswer({
+      question,
+      analysis,
+      intent,
+      memory: buildMemory({ history: [], current: analysis, maxTurns: 6 }).state,
+      context,
+      hits: retrieved.hits,
+      coverage: computeCoverage(analysis, context.snippets),
+      corpus: { sources: 1, files: 2, passages: 4 },
+      mode: 'knowledge',
+    });
+    assert.match(answer.text, /\| H100 \| 80 GB \|/);
+    // The architecture note is still a valid retrieved passage (it matched words
+    // in the question), but it must not be quoted anywhere in the answer body:
+    // not as a bullet, not as a blockquote, not as a "From <path>" section.
+    assert.ok(
+      !answer.text.includes('BM25 over stemmed'),
+      `off-topic passage leaked into the answer:\n${answer.text}`,
+    );
+    assert.ok(
+      !answer.text.includes('ARCHITECTURE.md'),
+      `the app's own docs were quoted for a corpus question:\n${answer.text}`,
+    );
+  });
+
   it('expands ambiguous queries with documentation vocabulary', () => {
     const expansion = expandQuery(['hardware', 'requirements']);
     assert.ok(expansion.concepts.length > 0);
