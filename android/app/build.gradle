@@ -10,8 +10,8 @@ android {
         applicationId 'ai.idol.app'
         minSdk 24
         targetSdk 34
-        versionCode 110
-        versionName '1.1.0'
+        versionCode 120
+        versionName '1.2.0'
     }
 
     // Signing happens here, not in a later shell step. An APK cannot be signed
