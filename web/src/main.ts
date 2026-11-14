@@ -48,9 +48,11 @@ void boot().catch((error: unknown) => {
   showFatalError(error instanceof Error ? error.message : 'Unexpected initialisation error.');
 });
 
-// Register the service worker only in production builds: it caches the shell so
-// the interface loads instantly and degrades gracefully when the network drops.
-if (import.meta.env.PROD && 'serviceWorker' in navigator) {
+// Register the service worker only in the production *web* build: it caches the
+// shell so the interface loads instantly and degrades gracefully when the network
+// drops. The device build needs none of that — its files are already inside the
+// APK — and a service worker there would only add a cache layer over local files.
+if (import.meta.env.PROD && !__IDOL_DEVICE__ && 'serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     void navigator.serviceWorker.register('/sw.js').catch(() => {
       /* offline support is optional */

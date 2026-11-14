@@ -98,8 +98,26 @@ jobs:
         with:
           gradle-version: '8.7'
 
+      - name: Decode a release keystore, if the repository has one
+        # Optional. Without these secrets the APK is signed with the debug key,
+        # which installs on any phone but cannot be uploaded to Play.
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          if [ -n "${KEYSTORE_BASE64:-}" ]; then
+            echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/idol-release.jks"
+            echo "IDOL_KEYSTORE_PATH=$RUNNER_TEMP/idol-release.jks" >> "$GITHUB_ENV"
+            echo "A release keystore was provided."
+          else
+            echo "No keystore secret; the APK will be debug-signed."
+          fi
+
       - name: Assemble the APK
         working-directory: android
+        env:
+          IDOL_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          IDOL_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          IDOL_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: gradle :app:assembleRelease --no-daemon --stacktrace
 
       - name: Name and inspect the APK
@@ -107,8 +125,7 @@ jobs:
         run: |
           set -euo pipefail
           VERSION=$(node -p "require('./package.json').version")
-          # Gradle may emit app-release-unsigned.apk when no signing config is
-          # present; zipalign and sign it with the debug key so it installs.
+          # Gradle is configured to always sign, so exactly one APK is expected.
           FOUND=$(find android/app/build/outputs/apk -name '*.apk' | head -1)
           if [ -z "$FOUND" ]; then
             echo "::error::Gradle produced no APK."
@@ -122,20 +139,14 @@ jobs:
           # Record what is inside so the download is checkable without installing.
           "$ANDROID_HOME/build-tools/34.0.0/aapt" dump badging "$APK" | head -5 || true
 
-      - name: Sign with the debug key
+      - name: Verify the APK is signed and installable
         run: |
           set -euo pipefail
           APK="${{ steps.apk.outputs.file }}"
           BUILD_TOOLS=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
-          KEYSTORE="$HOME/.android/debug.keystore"
-          if [ ! -f "$KEYSTORE" ]; then
-            keytool -genkeypair -v -keystore "$KEYSTORE" -storepass android -keypass android \
-              -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10000 \
-              -dname "CN=Android Debug,O=Android,C=US"
-          fi
-          "$BUILD_TOOLS/apksigner" sign --ks "$KEYSTORE" --ks-pass pass:android \
-            --key-pass pass:android --ks-key-alias androiddebugkey "$APK"
-          "$BUILD_TOOLS/apksigner" verify --print-certs "$APK" | head -4
+          "$BUILD_TOOLS/apksigner" verify --print-certs "$APK"
+          # A bad signature here would produce a download that Android refuses.
+          "$BUILD_TOOLS/aapt" dump badging "$APK" | grep -E "package:|sdkVersion|targetSdkVersion"
 
       - name: Checksum
         run: sha256sum "${{ steps.apk.outputs.file }}" > SHA256SUMS.txt && cat SHA256SUMS.txt

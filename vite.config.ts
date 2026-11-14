@@ -89,6 +89,10 @@ export function openFileBrowser() { fail('openFileBrowser'); }
 
 export default defineConfig({
   root: path.resolve(process.cwd(), 'web'),
+  // Inside the APK the bundle is served at /assets/www/. A relative base makes
+  // the emitted URLs resolve there instead of at the origin root, which is what
+  // absolute /assets/... paths would do.
+  base: deviceBuild ? './' : '/',
   plugins: deviceBuild ? [excludeServerOnly(), inlineLanguageGrammars()] : [],
   define: {
     __IDOL_DEVICE__: JSON.stringify(deviceBuild),

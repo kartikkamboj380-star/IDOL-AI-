@@ -14,14 +14,41 @@ android {
         versionName '1.1.0'
     }
 
+    // Signing happens here, not in a later shell step. An APK cannot be signed
+    // after the fact by pointing apksigner at the unsigned output — it has to be
+    // signed as the last stage of packaging. A keystore from the environment is
+    // used when present; otherwise the debug key, which installs fine but cannot
+    // be published to Play. See android/signing-note.md.
+    signingConfigs {
+        release {
+            def storePath = System.getenv('IDOL_KEYSTORE_PATH')
+            if (storePath != null && file(storePath).exists()) {
+                storeFile file(storePath)
+                storePassword System.getenv('IDOL_KEYSTORE_PASSWORD')
+                keyAlias System.getenv('IDOL_KEY_ALIAS')
+                keyPassword System.getenv('IDOL_KEY_PASSWORD')
+            }
+        }
+    }
+
     buildTypes {
         release {
-            // Unsigned by default so a plain `assembleRelease` works without
-            // secrets. The release workflow signs it when a keystore is present
-            // and otherwise ships a debug-signed APK clearly labelled as such.
             minifyEnabled false
             shrinkResources false
+            def configured = System.getenv('IDOL_KEYSTORE_PATH')
+            signingConfig (configured != null && file(configured).exists())
+                ? signingConfigs.release
+                : signingConfigs.debug
         }
+    }
+
+    dependencies {
+        // WebViewAssetLoader. Not a convenience: loading from file:// gives the
+        // page an opaque origin, and opaque origins have no IndexedDB and no
+        // localStorage — the documents a user loads would vanish on every restart.
+        // Serving the same files from https://appassets.androidplatform.net/
+        // gives them a real origin whose storage persists.
+        implementation 'androidx.webkit:webkit:1.11.0'
     }
 
     compileOptions {
