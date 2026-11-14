@@ -6,7 +6,7 @@
  *
  * The result runs offline on any machine with Node 20.11+:
  *
- *   tar -xzf idol-ai-1.0.0.tar.gz && cd idol-ai-1.0.0 && node start.mjs
+ *   tar -xzf idol-ai-<version>.tar.gz && cd idol-ai-<version> && node start.mjs
  *
  * Everything the runtime needs is inside: the built UI, the compiled server,
  * production node_modules, the demo corpus, docs, and a launcher. No build step
@@ -79,6 +79,7 @@ for (const file of ['start.mjs', path.join('scripts', 'verify.mjs')]) {
   cpSync(source, target);
 }
 cpSync(path.join(root, 'packaging', 'PACKAGE-README.md'), path.join(stage, 'README.md'));
+cpSync(path.join(root, 'packaging', 'TERMUX.md'), path.join(stage, 'TERMUX.md'));
 
 /* 6 — Remove runtime leftovers from the staged tree ---------------- */
 rmSync(path.join(stage, '.data'), { recursive: true, force: true });

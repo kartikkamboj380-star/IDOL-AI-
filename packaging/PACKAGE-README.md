@@ -10,8 +10,8 @@ aapke computer par chalta hai: koi account nahi, koi API key nahi, koi subscript
 **Zaroorat:** Node.js 20.11 ya usse naya — https://nodejs.org (LTS version).
 
 ```bash
-tar -xzf idol-ai-1.0.0.tar.gz     # ya: unzip idol-ai-1.0.0.zip
-cd idol-ai-1.0.0
+unzip idol-ai-<version>.zip      # ya: tar -xzf idol-ai-<version>.tar.gz
+cd idol-ai-<version>
 
 node start.mjs
 ```

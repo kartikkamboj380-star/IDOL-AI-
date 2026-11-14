@@ -33,8 +33,8 @@ You do not need to clone or build anything to run this. Every successful
 3. Unpack it and run:
 
 ```bash
-unzip idol-ai-1.0.0.zip
-cd idol-ai-1.0.0
+unzip idol-ai-<version>.zip
+cd idol-ai-<version>
 node start.mjs          # → http://localhost:8787
 ```
 
