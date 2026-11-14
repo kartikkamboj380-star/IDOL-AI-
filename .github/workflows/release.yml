@@ -18,9 +18,12 @@ on:
     branches: [main]
   workflow_dispatch:
 
+# Deliberately no cancel-in-progress: a release run kills nothing. When a tag and
+# a branch push arrive together, cancelling mid-run produced a spurious red X on a
+# commit whose checks had passed, which is worse than waiting an extra 30 seconds.
 concurrency:
   group: release-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 permissions:
   contents: write # needed to publish a Release on main/tags
